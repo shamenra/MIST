@@ -1,4 +1,10 @@
 using System.Globalization;
+using DynamicData.Kernel;
+using NexusMods.Abstractions.Games.FileHashes.Models;
+using NexusMods.Abstractions.Steam.Values;
+using NexusMods.MnemonicDB.Abstractions;
+using NexusMods.Sdk;
+using NexusMods.Sdk.Games;
 
 namespace NexusMods.Abstractions.Games.FileHashes;
 
@@ -89,6 +95,31 @@ public static class SteamManifestCoverageEvaluator
             parsedIds.Count,
             recognized,
             missing);
+    }
+
+    /// <summary>
+    /// Evaluates installed Steam manifest identifiers against an
+    /// existing game-hash database.
+    ///
+    /// This is an identifier lookup only. Recognized manifests are
+    /// not necessarily complete, pristine, or appropriate for reset.
+    ///
+    /// The database must already be initialized by the caller.
+    /// </summary>
+    public static SteamManifestCoverage EvaluateDatabase(
+        IEnumerable<LocatorId>? installedManifestIds,
+        IDb database)
+    {
+        ArgumentNullException.ThrowIfNull(database);
+
+        return Evaluate(
+            installedManifestIds?.Select(id => id.Value),
+            manifestId =>
+                SteamManifest
+                    .FindByManifestId(
+                        database,
+                        ManifestId.From(manifestId))
+                    .TryGetFirst(out _));
     }
 
     private static SteamManifestCoverage MissingMetadata() =>
