@@ -421,6 +421,9 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         using var tx = Connection.BeginTransaction();
         var gameMetadataId = loadout.InstallationId;
         var locations = loadout.InstallationInstance.Locations;
+
+        // Journal files published during this operation.
+        var pendingJournals = new List<string>();
         HashSet<GamePath> foldersWithDeletedFiles = [];
         EntityId? overridesGroup = null;
 
@@ -465,7 +468,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
 
                 case Actions.ExtractToDisk:
                     job?.SetStatus("Extracting files");
-                    await ActionExtractToDisk(syncTree, locations, tx, gameMetadataId, job);
+                    await ActionExtractToDisk(syncTree, locations, tx, gameMetadataId, pendingJournals, job);
                     break;
                 
                 case Actions.WriteIntrinsic:
@@ -498,6 +501,12 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         tx.Add(gameMetadataId, Sdk.Games.GameInstallMetadata.LastScannedDiskStateTransaction, EntityId.From(tx.ThisTxId.Value));
         tx.Add(loadout.Id, Loadout.LastAppliedDateTime, DateTime.UtcNow);
         await tx.Commit();
+
+        // Only successful database commits complete deployment journals.
+        foreach (var pending in pendingJournals)
+        {
+            MISTDeploymentJournal.Complete(pending);
+        }
 
         loadout = loadout.Rebase();
         var newState = DiskStateEntry.FindByGame(loadout.Db, loadout.Installation);
@@ -659,6 +668,8 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         var metadata = _gameRegistry.ForceGetMetadata(gameInstallation);
         var locations = gameInstallation.Locations;
 
+        var pendingJournals = new List<string>();
+
         HashSet<GamePath> foldersWithDeletedFiles = [];
 
         // MIST-003B.5C: Apply the same ownership rules
@@ -704,7 +715,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
                     break;
 
                 case Actions.ExtractToDisk:
-                    await ActionExtractToDisk(syncTree, locations, tx, metadata);
+                    await ActionExtractToDisk(syncTree, locations, tx, metadata, pendingJournals);
                     break;
 
                 case Actions.AddReifiedDelete:
@@ -734,6 +745,12 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         tx.Add(metadata, Sdk.Games.GameInstallMetadata.LastScannedDiskStateTransaction, EntityId.From(tx.ThisTxId.Value));
 
         var result = await tx.Commit();
+
+        // A successful commit is required before journal completion.
+        foreach (var pending in pendingJournals)
+        {
+            MISTDeploymentJournal.Complete(pending);
+        }
 
         var newMetadata = metadata.Rebase(result.Db);
 
@@ -813,7 +830,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         }
     }
 
-    private async Task ActionExtractToDisk(Dictionary<GamePath, SyncNode> groupings, GameLocations gameLocations, ITransaction tx, EntityId gameMetadataId, SynchronizeLoadoutJob? job = null)
+    private async Task ActionExtractToDisk(Dictionary<GamePath, SyncNode> groupings, GameLocations gameLocations, ITransaction tx, EntityId gameMetadataId, List<string> pendingJournals, SynchronizeLoadoutJob? job = null)
     {
         List<(Hash Hash, AbsolutePath Path)> toExtract = [];
 
@@ -856,6 +873,8 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         
         if (toExtract.Count > 0)
         {
+            string? pendingPath = null;
+
             try
             {
                 await _fileStore.ExtractFiles(
@@ -872,6 +891,13 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
                             .ToAbsolutePath(entry.Key).GetFullPath(),
                         ExpectedHash: node.Loadout.Hash);
                 }).ToArray();
+
+                // Persist the intended changes BEFORE publication.
+                pendingPath = await MISTDeploymentJournal.BeginAsync(
+                    MISTDeploymentJournal.GetDefaultDirectory(),
+                    publications);
+
+                pendingJournals.Add(pendingPath);
 
                 await MISTStagedFilePublisher.PublishNewFilesAsync(
                     publications);
@@ -895,12 +921,20 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
             }
             finally
             {
-                foreach (var stagedPath in stagedFiles.Values)
+                // Before journaling, unfinished staging files can
+                // be discarded because nothing has been published.
+                //
+                // Once journaled, preserve remaining staging files.
+                // Recovery needs to examine the actual filesystem.
+                if (pendingPath is null)
                 {
-                    var temporaryFile = stagedPath.GetFullPath();
+                    foreach (var stagedPath in stagedFiles.Values)
+                    {
+                        var temporaryFile = stagedPath.GetFullPath();
 
-                    if (System.IO.File.Exists(temporaryFile))
-                        System.IO.File.Delete(temporaryFile);
+                        if (System.IO.File.Exists(temporaryFile))
+                            System.IO.File.Delete(temporaryFile);
+                    }
                 }
             }
 
