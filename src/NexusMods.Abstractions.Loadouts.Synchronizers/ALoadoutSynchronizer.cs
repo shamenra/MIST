@@ -424,6 +424,18 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         HashSet<GamePath> foldersWithDeletedFiles = [];
         EntityId? overridesGroup = null;
 
+        // MIST-003B.5C: Verify the entire mutation plan
+        // before executing any synchronizer actions.
+        await MISTFilesystemMutationGuard.EnsureAuthorizedAsync(
+            syncTree,
+            path => locations.ToAbsolutePath(path).GetFullPath(),
+            (path, observedHash) =>
+                MISTManagedFileReceiptLookup.HasExactlyOneMatchingReceipt(
+                    Connection.Db,
+                    gameMetadataId,
+                    path,
+                    observedHash));
+
         foreach (var action in ActionsInOrder)
         {
             switch (action)
@@ -448,7 +460,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
 
                 case Actions.DeleteFromDisk:
                     job?.SetStatus("Deleting files");
-                    ActionDeleteFromDisk(syncTree, locations, tx, gameMetadataId, foldersWithDeletedFiles, job);
+                    await ActionDeleteFromDisk(syncTree, locations, tx, gameMetadataId, foldersWithDeletedFiles, job);
                     break;
 
                 case Actions.ExtractToDisk:
@@ -649,6 +661,18 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
 
         HashSet<GamePath> foldersWithDeletedFiles = [];
 
+        // MIST-003B.5C: Apply the same ownership rules
+        // to installation-state synchronization and resets.
+        await MISTFilesystemMutationGuard.EnsureAuthorizedAsync(
+            syncTree,
+            path => locations.ToAbsolutePath(path).GetFullPath(),
+            (path, observedHash) =>
+                MISTManagedFileReceiptLookup.HasExactlyOneMatchingReceipt(
+                    Connection.Db,
+                    metadata.Id,
+                    path,
+                    observedHash));
+
         foreach (var action in ActionsInOrder)
         {
             switch (action)
@@ -676,7 +700,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
                     break;
 
                 case Actions.DeleteFromDisk:
-                    ActionDeleteFromDisk(syncTree, locations, tx, metadata, foldersWithDeletedFiles);
+                    await ActionDeleteFromDisk(syncTree, locations, tx, metadata, foldersWithDeletedFiles);
                     break;
 
                 case Actions.ExtractToDisk:
@@ -792,7 +816,10 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
     private async Task ActionExtractToDisk(Dictionary<GamePath, SyncNode> groupings, GameLocations gameLocations, ITransaction tx, EntityId gameMetadataId, SynchronizeLoadoutJob? job = null)
     {
         List<(Hash Hash, AbsolutePath Path)> toExtract = [];
-        
+
+        // MIST-003B.5A: Stage new managed files before publication.
+        var stagedFiles = new Dictionary<GamePath, AbsolutePath>();
+
         foreach (var (path, node) in groupings)
         {
             if (!node.Actions.HasFlag(Actions.ExtractToDisk))
@@ -801,7 +828,27 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
             Debug.Assert(node.Loadout.Hash != Hash.Zero, "Loadout hash is zero, this should not happen");
 
             var resolvedPath = gameLocations.ToAbsolutePath(path);
-            toExtract.Add((node.Loadout.Hash, resolvedPath));
+
+            // MIST-003B.5H:
+            // ALL extracted files must be staged and verified.
+            // Direct writes to game destinations are forbidden.
+            //
+            // Existing-file replacement requires a separate
+            // recoverable operation, which is not implemented yet.
+            var destination = resolvedPath.GetFullPath();
+
+            if (System.IO.File.Exists(destination) ||
+                System.IO.Directory.Exists(destination))
+            {
+                throw new InvalidOperationException(
+                    $"M.I.S.T. will not overwrite an existing file at '{path.Path}'.");
+            }
+
+            var stagedPath = resolvedPath.Parent /
+                $".mist-stage-{Guid.NewGuid():N}";
+
+            stagedFiles.Add(path, stagedPath);
+            toExtract.Add((node.Loadout.Hash, stagedPath));
         }
 
         // Extract files to disk
@@ -809,7 +856,53 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         
         if (toExtract.Count > 0)
         {
-            await _fileStore.ExtractFiles(toExtract, CancellationToken.None, UpdateStatus);
+            try
+            {
+                await _fileStore.ExtractFiles(
+                    toExtract, CancellationToken.None, UpdateStatus);
+
+                // Verify the complete batch before publishing files.
+                var publications = stagedFiles.Select(entry =>
+                {
+                    var node = groupings[entry.Key];
+
+                    return (
+                        StagedPath: entry.Value.GetFullPath(),
+                        DestinationPath: gameLocations
+                            .ToAbsolutePath(entry.Key).GetFullPath(),
+                        ExpectedHash: node.Loadout.Hash);
+                }).ToArray();
+
+                await MISTStagedFilePublisher.PublishNewFilesAsync(
+                    publications);
+
+                foreach (var (gamePath, _) in stagedFiles)
+                {
+                    var node = groupings[gamePath];
+
+                    // Record mod deployment evidence only for loadout files.
+                    // Restored original game content is not a mod deployment.
+                    if (node.SourceItemType == LoadoutSourceItemType.Loadout)
+                    {
+                        _ = new MISTManagedFileReceipt.New(tx)
+                        {
+                            GameInstallId = gameMetadataId,
+                            Path = gamePath.ToGamePathParentTuple(gameMetadataId),
+                            DeployedHash = node.Loadout.Hash,
+                        };
+                    }
+                }
+            }
+            finally
+            {
+                foreach (var stagedPath in stagedFiles.Values)
+                {
+                    var temporaryFile = stagedPath.GetFullPath();
+
+                    if (System.IO.File.Exists(temporaryFile))
+                        System.IO.File.Delete(temporaryFile);
+                }
+            }
 
             var isUnix = _os.IsUnix();
             foreach (var (gamePath, node) in groupings)
@@ -863,7 +956,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         }
     }
 
-    private void ActionDeleteFromDisk(
+    private async Task ActionDeleteFromDisk(
         Dictionary<GamePath, SyncNode> groupings,
         GameLocations gameLocations,
         ITransaction tx,
@@ -886,6 +979,25 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
             itemIndex++;
 
             var resolvedPath = gameLocations.ToAbsolutePath(path);
+
+            // MIST-003B.5F:
+            // The plan was checked before execution, but other
+            // actions may have run since then. Verify again using
+            // the actual current file contents before deletion.
+            await MISTFilesystemMutationGuard.EnsureAuthorizedAsync(
+                new Dictionary<GamePath, SyncNode>
+                {
+                    [path] = node,
+                },
+                candidate =>
+                    gameLocations.ToAbsolutePath(candidate).GetFullPath(),
+                (candidate, observedHash) =>
+                    MISTManagedFileReceiptLookup.HasExactlyOneMatchingReceipt(
+                        Connection.Db,
+                        (EntityId)gameMetadataId,
+                        candidate,
+                        observedHash));
+
             resolvedPath.Delete();
 
             // Only delete the entry if we're not going to replace it
