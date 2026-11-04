@@ -1,4 +1,14 @@
 using System.Reactive.Disposables;
+using NexusMods.Abstractions.Games.FileHashes;
+using Avalonia.Threading;
+using NexusMods.Abstractions.Collections;
+using NexusMods.App.UI.Dialog;
+using NexusMods.App.UI.Dialog.Enums;
+using NexusMods.App.UI.Pages.CollectionDownload;
+using NexusMods.App.UI.Pages.LoadoutPage;
+using NexusMods.Collections;
+using NexusMods.UI.Sdk.Dialog;
+using NexusMods.UI.Sdk.Dialog.Enums;
 using System.Reactive.Linq;
 using DynamicData;
 using Microsoft.Extensions.DependencyInjection;
@@ -162,6 +172,101 @@ public class ApplyControlViewModel : AViewModel<IApplyControlViewModel>, IApplyC
         var loadout = Sdk.Loadouts.Loadout.Load(_conn.Db, _loadoutId);
         try
         {
+            // MIST-003C.1:
+            // Unknown Steam metadata is an advisory for
+            // ordinary mod operations, not universal denial.
+            var installation = loadout.InstallationInstance;
+
+            if (installation.LocatorResult.Store == GameStore.Steam)
+            {
+                var hashesDb = await _serviceProvider
+                    .GetRequiredService<IFileHashesService>()
+                    .GetFileHashesDb();
+
+                var advisory =
+                    SteamResetPreflight.GetManagementAdvisory(
+                        installation.LocatorResult.Store,
+                        installation.LocatorResult.StoreIdentifier,
+                        installation.LocatorResult.LocatorIds,
+                        hashesDb);
+
+                if (!string.IsNullOrWhiteSpace(advisory))
+                {
+                    var windowManager = _serviceProvider
+                        .GetRequiredService<IWindowManager>();
+
+                    // A loadout switch invokes the protected
+                    // original-game reset path. Do not offer
+                    // Continue when that reset is blocked.
+                    var requiresLoadoutSwitch =
+                        GameInstallMetadata.LastSyncedLoadout
+                            .TryGetValue(
+                                loadout.Installation,
+                                out var activeLoadoutId)
+                        && activeLoadoutId != loadout.Id;
+
+                    if (requiresLoadoutSwitch)
+                    {
+                        var blockedDialog =
+                            DialogFactory.CreateStandardDialog(
+                                title: "M.I.S.T. — Reset unavailable",
+                                new StandardDialogParameters
+                                {
+                                    Text =
+                                        advisory
+                                        + "\\n\\nSwitching loadouts requires "
+                                        + "restoring the original game state. "
+                                        + "M.I.S.T. cannot safely verify that "
+                                        + "reset from the available Steam "
+                                        + "metadata. This operation remains "
+                                        + "blocked."
+                                },
+                                buttonDefinitions:
+                                [
+                                    DialogStandardButtons.Cancel
+                                ]);
+
+                        await windowManager.ShowDialog(
+                            blockedDialog,
+                            DialogWindowType.Modal);
+
+                        return;
+                    }
+
+                    var confirmation =
+                        DialogFactory.CreateStandardDialog(
+                            title: "M.I.S.T. — Compatibility notice",
+                            new StandardDialogParameters
+                            {
+                                Text =
+                                    advisory
+                                    + "\\n\\nYou may continue with "
+                                    + "ordinary mod-management operations. "
+                                    + "M.I.S.T. will still enforce its "
+                                    + "filesystem and ownership checks. "
+                                    + "Continue applying this loadout?"
+                            },
+                            buttonDefinitions:
+                            [
+                                DialogStandardButtons.Cancel,
+                                new DialogButtonDefinition(
+                                    "Continue",
+                                    ButtonDefinitionId.Accept,
+                                    ButtonAction.Accept,
+                                    ButtonStyling.Primary)
+                            ]);
+
+                    var response = await windowManager.ShowDialog(
+                        confirmation,
+                        DialogWindowType.Modal);
+
+                    if (response.ButtonId != ButtonDefinitionId.Accept)
+                        return;
+                }
+            }
+
+            // The synchronizer remains the enforcement layer.
+            // A dialog response never bypasses its file guards.
             await Task.Run(async () =>
             {
                 await _syncService.Synchronize(_loadoutId);
