@@ -1356,6 +1356,18 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
 
     public async Task ResetToOriginalGameState(GameInstallation installation, LocatorId[] locatorIds)
     {
+        // MIST-003: Protect direct reset callers too.
+        if (installation.LocatorResult.Store == GameStore.Steam)
+        {
+            var hashesDb = await _fileHashService.GetFileHashesDb();
+
+            SteamResetPreflight.EnsureCanReset(
+                installation.LocatorResult.Store,
+                installation.LocatorResult.StoreIdentifier,
+                locatorIds,
+                hashesDb);
+        }
+
         var gameState = _fileHashService.GetGameFiles((installation.LocatorResult.Store, locatorIds));
         var metadata = await ReindexState(installation);
 

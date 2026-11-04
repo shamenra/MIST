@@ -233,20 +233,26 @@ internal partial class LoadoutManager : ILoadoutManager
 
     public async ValueTask DeleteLoadout(LoadoutId loadoutId, GarbageCollectorRunMode gcRunMode = GarbageCollectorRunMode.DoNotRun, bool deactivateIfActive = true, CancellationToken cancellationToken = default)
     {
-        {
-            using var tx1 = _connection.BeginTransaction();
-            tx1.Add(loadoutId, Loadout.LoadoutKind, LoadoutKind.Deleted);
-            await tx1.Commit();
-        }
-
+        // MIST-003: Deactivate before marking a loadout deleted.
+        // If the Steam baseline preflight rejects deactivation,
+        // the loadout must remain visible and recoverable.
         var loadout = Loadout.Load(_connection.Db, loadoutId);
-        Debug.Assert(!loadout.IsVisible(), "loadout shouldn't be visible anymore");
 
         var metadata = GameInstallMetadata.Load(_connection.Db, loadout.InstallationId);
         if (deactivateIfActive && GameInstallMetadata.LastSyncedLoadout.TryGetValue(metadata, out var lastAppliedLoadout) && lastAppliedLoadout == loadoutId.Value)
         {
             await DeactivateCurrentLoadout(loadout.InstallationInstance, cancellationToken: cancellationToken);
         }
+
+        // Only commit deletion after deactivation succeeds.
+        {
+            using var tx1 = _connection.BeginTransaction();
+            tx1.Add(loadoutId, Loadout.LoadoutKind, LoadoutKind.Deleted);
+            await tx1.Commit();
+        }
+
+        loadout = Loadout.Load(_connection.Db, loadoutId);
+        Debug.Assert(!loadout.IsVisible(), "loadout shouldn't be visible anymore");
 
         using var tx = _connection.BeginTransaction();
 
@@ -282,6 +288,18 @@ internal partial class LoadoutManager : ILoadoutManager
         var synchronizer = installation.GetGame().Synchronizer;
 
         if (!metadata.Contains(GameInstallMetadata.LastSyncedLoadout)) return;
+
+        // MIST-003: Validate before synchronization can change files.
+        if (installation.LocatorResult.Store == GameStore.Steam)
+        {
+            var hashesDb = await _fileHashesService.GetFileHashesDb();
+
+            SteamResetPreflight.EnsureCanReset(
+                installation.LocatorResult.Store,
+                installation.LocatorResult.StoreIdentifier,
+                installation.LocatorResult.LocatorIds,
+                hashesDb);
+        }
 
         // Synchronize the last applied loadout, so we don't lose any changes
         await synchronizer.Synchronize(Loadout.Load(_connection.Db, metadata.LastSyncedLoadout));
