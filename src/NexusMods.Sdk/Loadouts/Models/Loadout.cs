@@ -4,8 +4,6 @@ using NexusMods.MnemonicDB.Abstractions.Attributes;
 using NexusMods.MnemonicDB.Abstractions.Models;
 using NexusMods.MnemonicDB.Abstractions.TxFunctions;
 using NexusMods.Sdk.Library;
-using NexusMods.MnemonicDB.Abstractions.Attributes;
-using NexusMods.MnemonicDB.Abstractions.Models;
 using NexusMods.Sdk.Games;
 
 namespace NexusMods.Sdk.Loadouts;
