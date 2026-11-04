@@ -3,9 +3,14 @@
 
     <PropertyGroup>
         <WarningsAsErrors>Nullable</WarningsAsErrors>
+
+        <!-- Weave requires the generated-source path during initialization. -->
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- Expose the generated-source path to Weave's source generator. -->
+        <CompilerVisibleProperty Include="CompilerGeneratedFilesOutputPath" />
         <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
     </ItemGroup>
 </Project>
