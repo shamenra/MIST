@@ -26,8 +26,10 @@ public class UpdateChecker
 
     public static bool ShouldCheckForUpdate(Version currentVersion, InstallationMethod installationMethod)
     {
-        // NOTE(erri120): don't check for updates if build from source
-        return installationMethod is not InstallationMethod.Manually;
+        // M.I.S.T.: Disable inherited Nexus Mods App update checks.
+        // Re-enable after the fork has its own release repository.
+        // This does not affect game-hash database updates.
+        return false;
     }
 
     public async ValueTask<Release?> FetchUpdateRelease(Version currentVersion, CancellationToken cancellationToken = default)

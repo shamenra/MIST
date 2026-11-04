@@ -21,7 +21,7 @@ internal class HandlerRegistration : BackgroundService
     {
         try
         {
-            await _osInterop.RegisterUriSchemeHandler(scheme: "nxm", cancellationToken: stoppingToken);
+            await _osInterop.RegisterUriSchemeHandler(scheme: "nxm", setAsDefaultHandler: false, cancellationToken: stoppingToken);
         }
         catch (Exception e)
         {
