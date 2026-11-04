@@ -50,8 +50,16 @@ internal class SteamLocator : IGameLocator
 
             var path = gameFinderGame.Path;
 
-            var locatorIds = gameFinderGame.AppManifest.InstalledDepots
-                .Select(x => LocatorId.From(x.Value.ManifestId.Value.ToString()))
+            // MIST-004A: Preserve installed depot/manifest associations.
+            var installedSteamDepots = gameFinderGame.AppManifest.InstalledDepots
+                .Select(x => new SteamInstalledDepot(
+                    x.Key.Value,
+                    x.Value.ManifestId.Value))
+                .ToImmutableArray();
+
+            // Keep existing manifest-only locator IDs for compatibility.
+            var locatorIds = installedSteamDepots
+                .Select(x => LocatorId.From(x.ManifestId.ToString()))
                 .ToImmutableArray();
 
             var winePrefixDirectoryPath = gameFinderGame.GetProtonPrefix()?.ProtonDirectory.Combine("pfx");
@@ -64,6 +72,7 @@ internal class SteamLocator : IGameLocator
                 Game = game,
                 Path = path,
                 LocatorIds = locatorIds,
+                SteamInstalledDepots = installedSteamDepots,
                 Platform = platform,
                 StoreIdentifier = storeIdentifier.ToString(),
                 Store = Store,

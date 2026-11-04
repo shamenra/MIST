@@ -6,6 +6,9 @@ using NexusMods.Paths;
 namespace NexusMods.Sdk.Games;
 
 [PublicAPI]
+public readonly record struct SteamInstalledDepot(uint DepotId, ulong ManifestId);
+
+[PublicAPI]
 public class GameLocatorResult
 {
     /// <summary>
@@ -32,6 +35,12 @@ public class GameLocatorResult
     /// The locator identifiers for the installation.
     /// </summary>
     public required ImmutableArray<LocatorId> LocatorIds { get; init; }
+
+    /// <summary>
+    /// Installed Steam depot/manifest pairs. Discovery metadata only.
+    /// </summary>
+    public ImmutableArray<SteamInstalledDepot> SteamInstalledDepots
+        { get; init; } = ImmutableArray<SteamInstalledDepot>.Empty;
 
     /// <summary>
     /// The locator that found this instance.
