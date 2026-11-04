@@ -24,6 +24,9 @@ public class MISTDeploymentInspectorTests
             observations[0].State.Should().Be(
                 MISTPendingDestinationState.Absent);
 
+            observations[0].InstallationEntityId.Should()
+                .Be("mist-test-installation");
+
             File.Exists(fixture.Destination).Should().BeFalse();
             File.Exists(fixture.Journal).Should().BeTrue();
             File.Exists(fixture.Staged).Should().BeTrue();
@@ -162,6 +165,7 @@ public class MISTDeploymentInspectorTests
 
         var journal = await MISTDeploymentJournal.BeginAsync(
             directory,
+            "mist-test-installation",
             [
                 (
                     StagedPath: staged,

@@ -895,6 +895,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
                 // Persist the intended changes BEFORE publication.
                 pendingPath = await MISTDeploymentJournal.BeginAsync(
                     MISTDeploymentJournal.GetDefaultDirectory(),
+                    gameMetadataId.ToString(),
                     publications);
 
                 pendingJournals.Add(pendingPath);

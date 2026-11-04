@@ -12,6 +12,7 @@ namespace NexusMods.Abstractions.Loadouts.Synchronizers;
 public sealed record MISTPendingDeployment(
     Guid OperationId,
     DateTimeOffset CreatedUtc,
+    string InstallationEntityId,
     MISTPendingDeploymentFile[] Files);
 
 public sealed record MISTPendingDeploymentFile(
@@ -75,6 +76,7 @@ public static class MISTDeploymentJournal
 
     public static async Task<string> BeginAsync(
         string journalDirectory,
+        string installationEntityId,
         IReadOnlyList<(
             string StagedPath,
             string DestinationPath,
@@ -84,6 +86,8 @@ public static class MISTDeploymentJournal
         ArgumentException.ThrowIfNullOrWhiteSpace(
             journalDirectory);
 
+        ArgumentException.ThrowIfNullOrWhiteSpace(
+            installationEntityId);
         ArgumentNullException.ThrowIfNull(files);
 
         if (files.Count == 0)
@@ -118,6 +122,7 @@ public static class MISTDeploymentJournal
         var record = new MISTPendingDeployment(
             operationId,
             DateTimeOffset.UtcNow,
+            installationEntityId,
             entries);
 
         var prefix = operationId.ToString("N");

@@ -43,6 +43,7 @@ public class MISTDeploymentJournalTests
             var pending = await MISTDeploymentJournal
                 .BeginAsync(
                     directory,
+                    "mist-test-installation",
                     [
                         (
                             StagedPath: staged,
@@ -63,6 +64,9 @@ public class MISTDeploymentJournalTests
 
             record.OperationId.Should()
                 .NotBe(Guid.Empty);
+
+            record.InstallationEntityId.Should()
+                .Be("mist-test-installation");
 
             record.Files.Should().ContainSingle();
 
@@ -157,6 +161,7 @@ public class MISTDeploymentJournalTests
 
         return await MISTDeploymentJournal.BeginAsync(
             directory,
+            "mist-test-installation",
             [
                 (
                     StagedPath: Path.Combine(

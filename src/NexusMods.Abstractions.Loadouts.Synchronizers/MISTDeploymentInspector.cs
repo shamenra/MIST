@@ -15,6 +15,7 @@ public enum MISTPendingDestinationState
 public sealed record MISTPendingDeploymentObservation(
     string JournalPath,
     Guid OperationId,
+    string InstallationEntityId,
     string DestinationPath,
     MISTPendingDestinationState State);
 
@@ -40,6 +41,7 @@ public static class MISTDeploymentInspector
             cancellationToken.ThrowIfCancellationRequested();
 
             if (record.OperationId == Guid.Empty ||
+                string.IsNullOrWhiteSpace(record.InstallationEntityId) ||
                 record.Files is null ||
                 record.Files.Length == 0)
             {
@@ -69,6 +71,7 @@ public static class MISTDeploymentInspector
                 observations.Add(new MISTPendingDeploymentObservation(
                     journalPath,
                     record.OperationId,
+                    record.InstallationEntityId,
                     file.DestinationPath,
                     state));
             }
