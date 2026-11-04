@@ -441,67 +441,90 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
                     path,
                     observedHash));
 
-        foreach (var action in ActionsInOrder)
+        try
         {
-            switch (action)
+            foreach (var action in ActionsInOrder)
             {
-                case Actions.DoNothing:
-                    break;
+                switch (action)
+                {
+                    case Actions.DoNothing:
+                        break;
 
-                case Actions.BackupFile:
-                    job?.SetStatus("Backing up files");
-                    await ActionBackupNewFiles(loadout.InstallationInstance, loadout.InstallationId, syncTree);
-                    break;
+                    case Actions.BackupFile:
+                        job?.SetStatus("Backing up files");
+                        await ActionBackupNewFiles(loadout.InstallationInstance, loadout.InstallationId, syncTree);
+                        break;
 
-                case Actions.IngestFromDisk:
-                    job?.SetStatus("Adding external changes");
-                    ActionIngestFromDisk(syncTree, loadout, tx, ref overridesGroup);
-                    break;
+                    case Actions.IngestFromDisk:
+                        job?.SetStatus("Adding external changes");
+                        ActionIngestFromDisk(syncTree, loadout, tx, ref overridesGroup);
+                        break;
                 
-                case Actions.AdaptLoadout:
-                    job?.SetStatus("Updating loadout");
-                    await AdaptLoadout(syncTree, locations, loadout, tx);
-                    break;
+                    case Actions.AdaptLoadout:
+                        job?.SetStatus("Updating loadout");
+                        await AdaptLoadout(syncTree, locations, loadout, tx);
+                        break;
 
-                case Actions.DeleteFromDisk:
-                    job?.SetStatus("Deleting files");
-                    await ActionDeleteFromDisk(syncTree, locations, tx, gameMetadataId, foldersWithDeletedFiles, pendingDeletions, job);
-                    break;
+                    case Actions.DeleteFromDisk:
+                        job?.SetStatus("Deleting files");
+                        await ActionDeleteFromDisk(syncTree, locations, tx, gameMetadataId, foldersWithDeletedFiles, pendingDeletions, job);
+                        break;
 
-                case Actions.ExtractToDisk:
-                    job?.SetStatus("Extracting files");
-                    await ActionExtractToDisk(syncTree, locations, tx, gameMetadataId, pendingJournals, job);
-                    break;
+                    case Actions.ExtractToDisk:
+                        job?.SetStatus("Extracting files");
+                        await ActionExtractToDisk(syncTree, locations, tx, gameMetadataId, pendingJournals, job);
+                        break;
                 
-                case Actions.WriteIntrinsic:
-                    job?.SetStatus("Writing intrinsic files");
-                    await ActionWriteIntrinsics(syncTree, locations, tx, loadout, job);
-                    break;
+                    case Actions.WriteIntrinsic:
+                        job?.SetStatus("Writing intrinsic files");
+                        await ActionWriteIntrinsics(syncTree, locations, tx, loadout, job);
+                        break;
 
-                case Actions.AddReifiedDelete:
-                    job?.SetStatus("Updating deleted files");
-                    ActionAddReifiedDelete(syncTree, loadout, tx, ref overridesGroup);
-                    break;
+                    case Actions.AddReifiedDelete:
+                        job?.SetStatus("Updating deleted files");
+                        ActionAddReifiedDelete(syncTree, loadout, tx, ref overridesGroup);
+                        break;
 
-                case Actions.WarnOfUnableToExtract:
-                    WarnOfUnableToExtract(syncTree);
-                    break;
+                    case Actions.WarnOfUnableToExtract:
+                        WarnOfUnableToExtract(syncTree);
+                        break;
 
-                case Actions.WarnOfConflict:
-                    WarnOfConflict(syncTree);
-                    break;
+                    case Actions.WarnOfConflict:
+                        WarnOfConflict(syncTree);
+                        break;
                 
-                default:
-                    throw new InvalidOperationException($"Unknown action: {action}");
+                    default:
+                        throw new InvalidOperationException($"Unknown action: {action}");
+                }
             }
+
+            job?.SetStatus("Recording changes");
+        
+            tx.Add(gameMetadataId, Sdk.Games.GameInstallMetadata.LastSyncedLoadout, loadout.Id);
+            tx.Add(gameMetadataId, Sdk.Games.GameInstallMetadata.LastSyncedLoadoutTransaction, EntityId.From(tx.ThisTxId.Value));
+            tx.Add(gameMetadataId, Sdk.Games.GameInstallMetadata.LastScannedDiskStateTransaction, EntityId.From(tx.ThisTxId.Value));
+            tx.Add(loadout.Id, Loadout.LastAppliedDateTime, DateTime.UtcNow);
+        }
+        catch (Exception actionError)
+        {
+            try
+            {
+                await MISTDeletionJournal.RestoreUncommittedAsync(
+                    pendingDeletions);
+            }
+            catch (Exception recoveryError)
+            {
+                throw new AggregateException(
+                    "M.I.S.T. failed before commit and could " +
+                    "not restore every quarantined file. " +
+                    "Manual review is required.",
+                    actionError,
+                    recoveryError);
+            }
+
+            throw;
         }
 
-        job?.SetStatus("Recording changes");
-        
-        tx.Add(gameMetadataId, Sdk.Games.GameInstallMetadata.LastSyncedLoadout, loadout.Id);
-        tx.Add(gameMetadataId, Sdk.Games.GameInstallMetadata.LastSyncedLoadoutTransaction, EntityId.From(tx.ThisTxId.Value));
-        tx.Add(gameMetadataId, Sdk.Games.GameInstallMetadata.LastScannedDiskStateTransaction, EntityId.From(tx.ThisTxId.Value));
-        tx.Add(loadout.Id, Loadout.LastAppliedDateTime, DateTime.UtcNow);
         await tx.Commit();
 
         // Only successful database commits complete deployment journals.
@@ -696,65 +719,88 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
                     path,
                     observedHash));
 
-        foreach (var action in ActionsInOrder)
+        try
         {
-            switch (action)
+            foreach (var action in ActionsInOrder)
             {
-                case Actions.DoNothing:
-                    break;
+                switch (action)
+                {
+                    case Actions.DoNothing:
+                        break;
 
-                case Actions.BackupFile:
-                    await ActionBackupNewFiles(gameInstallation, metadata, syncTree);
-                    break;
+                    case Actions.BackupFile:
+                        await ActionBackupNewFiles(gameInstallation, metadata, syncTree);
+                        break;
                 
-                case Actions.AdaptLoadout:
-                    if (ApplicationConstants.IsDebug && syncTree.Any(n => n.Value.Actions.HasFlag(Actions.AdaptLoadout)))
-                        throw new InvalidOperationException("Cannot adapt loadout when not in a loadout context");
-                    break;
+                    case Actions.AdaptLoadout:
+                        if (ApplicationConstants.IsDebug && syncTree.Any(n => n.Value.Actions.HasFlag(Actions.AdaptLoadout)))
+                            throw new InvalidOperationException("Cannot adapt loadout when not in a loadout context");
+                        break;
                 
-                case Actions.WriteIntrinsic:
-                    if (ApplicationConstants.IsDebug && syncTree.Any(n => n.Value.Actions.HasFlag(Actions.AdaptLoadout)))
-                        throw new InvalidOperationException("Cannot adapt loadout when not in a loadout context");
-                    break;
+                    case Actions.WriteIntrinsic:
+                        if (ApplicationConstants.IsDebug && syncTree.Any(n => n.Value.Actions.HasFlag(Actions.AdaptLoadout)))
+                            throw new InvalidOperationException("Cannot adapt loadout when not in a loadout context");
+                        break;
 
-                case Actions.IngestFromDisk:
-                    if (ApplicationConstants.IsDebug && syncTree.Any(n => n.Value.Actions.HasFlag(Actions.IngestFromDisk)))
-                        throw new InvalidOperationException("Cannot ingest files from disk when not in a loadout context");
-                    break;
+                    case Actions.IngestFromDisk:
+                        if (ApplicationConstants.IsDebug && syncTree.Any(n => n.Value.Actions.HasFlag(Actions.IngestFromDisk)))
+                            throw new InvalidOperationException("Cannot ingest files from disk when not in a loadout context");
+                        break;
 
-                case Actions.DeleteFromDisk:
-                    await ActionDeleteFromDisk(syncTree, locations, tx, metadata, foldersWithDeletedFiles, pendingDeletions);
-                    break;
+                    case Actions.DeleteFromDisk:
+                        await ActionDeleteFromDisk(syncTree, locations, tx, metadata, foldersWithDeletedFiles, pendingDeletions);
+                        break;
 
-                case Actions.ExtractToDisk:
-                    await ActionExtractToDisk(syncTree, locations, tx, metadata, pendingJournals);
-                    break;
+                    case Actions.ExtractToDisk:
+                        await ActionExtractToDisk(syncTree, locations, tx, metadata, pendingJournals);
+                        break;
 
-                case Actions.AddReifiedDelete:
-                    if (ApplicationConstants.IsDebug && syncTree.Any(n => n.Value.Actions.HasFlag(Actions.AddReifiedDelete)))
-                        throw new InvalidOperationException("Cannot add reified deletes when not in a loadout context");
-                    break;
+                    case Actions.AddReifiedDelete:
+                        if (ApplicationConstants.IsDebug && syncTree.Any(n => n.Value.Actions.HasFlag(Actions.AddReifiedDelete)))
+                            throw new InvalidOperationException("Cannot add reified deletes when not in a loadout context");
+                        break;
 
-                case Actions.WarnOfUnableToExtract:
-                    WarnOfUnableToExtract(syncTree);
-                    break;
+                    case Actions.WarnOfUnableToExtract:
+                        WarnOfUnableToExtract(syncTree);
+                        break;
 
-                case Actions.WarnOfConflict:
-                    WarnOfConflict(syncTree);
-                    break;
+                    case Actions.WarnOfConflict:
+                        WarnOfConflict(syncTree);
+                        break;
 
-                default:
-                    throw new InvalidOperationException($"Unknown action: {action}");
+                    default:
+                        throw new InvalidOperationException($"Unknown action: {action}");
+                }
             }
-        }
 
-        if (metadata.Contains(Sdk.Games.GameInstallMetadata.LastSyncedLoadout))
+            if (metadata.Contains(Sdk.Games.GameInstallMetadata.LastSyncedLoadout))
+            {
+                tx.Retract(metadata, Sdk.Games.GameInstallMetadata.LastSyncedLoadout, (EntityId)metadata.LastSyncedLoadout);
+                tx.Retract(metadata, Sdk.Games.GameInstallMetadata.LastSyncedLoadoutTransaction, (EntityId)metadata.LastSyncedLoadoutTransaction);
+            }
+
+            tx.Add(metadata, Sdk.Games.GameInstallMetadata.LastScannedDiskStateTransaction, EntityId.From(tx.ThisTxId.Value));
+
+        }
+        catch (Exception actionError)
         {
-            tx.Retract(metadata, Sdk.Games.GameInstallMetadata.LastSyncedLoadout, (EntityId)metadata.LastSyncedLoadout);
-            tx.Retract(metadata, Sdk.Games.GameInstallMetadata.LastSyncedLoadoutTransaction, (EntityId)metadata.LastSyncedLoadoutTransaction);
-        }
+            try
+            {
+                await MISTDeletionJournal.RestoreUncommittedAsync(
+                    pendingDeletions);
+            }
+            catch (Exception recoveryError)
+            {
+                throw new AggregateException(
+                    "M.I.S.T. failed before commit and could " +
+                    "not restore every quarantined file. " +
+                    "Manual review is required.",
+                    actionError,
+                    recoveryError);
+            }
 
-        tx.Add(metadata, Sdk.Games.GameInstallMetadata.LastScannedDiskStateTransaction, EntityId.From(tx.ThisTxId.Value));
+            throw;
+        }
 
         var result = await tx.Commit();
 

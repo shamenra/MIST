@@ -148,6 +148,154 @@ public class MISTDeletionJournalTests
         }
     }
 
+    [Fact]
+    public async Task UncommittedDeletionRestoresFile()
+    {
+        var f = await Fixture.CreateAsync();
+
+        try
+        {
+            var handle = await f.BeginAsync();
+
+            await MISTFileQuarantine.MoveVerifiedAsync(
+                f.Original,
+                f.Quarantine,
+                f.Hash);
+
+            await MISTDeletionJournal.RestoreUncommittedAsync(
+                [handle]);
+
+            File.ReadAllBytes(f.Original)
+                .Should().Equal(f.Content);
+
+            File.Exists(f.Quarantine).Should().BeFalse();
+
+            File.Exists(handle.JournalPath)
+                .Should().BeFalse();
+        }
+        finally
+        {
+            f.Cleanup();
+        }
+    }
+
+    [Fact]
+    public async Task RecoveryPreservesOccupiedDestination()
+    {
+        var f = await Fixture.CreateAsync();
+
+        try
+        {
+            var handle = await f.BeginAsync();
+
+            await MISTFileQuarantine.MoveVerifiedAsync(
+                f.Original,
+                f.Quarantine,
+                f.Hash);
+
+            var replacement = Encoding.UTF8.GetBytes(
+                "Independent user-created content");
+
+            await File.WriteAllBytesAsync(
+                f.Original,
+                replacement);
+
+            Func<Task> act = () =>
+                MISTDeletionJournal.RestoreUncommittedAsync(
+                    [handle]);
+
+            await act.Should()
+                .ThrowAsync<AggregateException>();
+
+            File.ReadAllBytes(f.Original)
+                .Should().Equal(replacement);
+
+            File.ReadAllBytes(f.Quarantine)
+                .Should().Equal(f.Content);
+
+            File.Exists(handle.JournalPath)
+                .Should().BeTrue();
+        }
+        finally
+        {
+            f.Cleanup();
+        }
+    }
+
+    [Fact]
+    public async Task RecoveryPreservesModifiedQuarantine()
+    {
+        var f = await Fixture.CreateAsync();
+
+        try
+        {
+            var handle = await f.BeginAsync();
+
+            await MISTFileQuarantine.MoveVerifiedAsync(
+                f.Original,
+                f.Quarantine,
+                f.Hash);
+
+            var modified = Encoding.UTF8.GetBytes(
+                "Changed while quarantined");
+
+            await File.WriteAllBytesAsync(
+                f.Quarantine,
+                modified);
+
+            Func<Task> act = () =>
+                MISTDeletionJournal.RestoreUncommittedAsync(
+                    [handle]);
+
+            await act.Should()
+                .ThrowAsync<AggregateException>();
+
+            File.ReadAllBytes(f.Quarantine)
+                .Should().Equal(modified);
+
+            File.Exists(handle.JournalPath)
+                .Should().BeTrue();
+
+            File.Exists(f.Original).Should().BeFalse();
+        }
+        finally
+        {
+            f.Cleanup();
+        }
+    }
+
+    [Fact]
+    public async Task RecoveryDoesNotDeleteOriginalIfMoveNeverHappened()
+    {
+        var f = await Fixture.CreateAsync();
+
+        try
+        {
+            // Journal exists, but quarantine was never moved.
+            var handle = await f.BeginAsync();
+
+            Func<Task> act = () =>
+                MISTDeletionJournal.RestoreUncommittedAsync(
+                    [handle]);
+
+            await act.Should()
+                .ThrowAsync<AggregateException>();
+
+            File.ReadAllBytes(f.Original)
+                .Should().Equal(f.Content);
+
+            File.Exists(f.Quarantine).Should().BeFalse();
+
+            // Unresolved state remains visible for inspection.
+            File.Exists(handle.JournalPath)
+                .Should().BeTrue();
+        }
+        finally
+        {
+            f.Cleanup();
+        }
+    }
+
     private sealed class Fixture
     {
         public required string Directory { get; init; }

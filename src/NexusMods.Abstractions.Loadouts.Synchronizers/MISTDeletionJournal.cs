@@ -187,6 +187,62 @@ public static class MISTDeletionJournal
     }
 
     /// <summary>
+    /// Best-effort restoration for an operation that failed
+    /// BEFORE its database commit was attempted.
+    ///
+    /// Never call this after attempting a database commit:
+    /// the commit result may be ambiguous.
+    ///
+    /// Each restoration verifies the quarantine hash and
+    /// refuses to overwrite an occupied original path.
+    /// An unresolved operation retains its journal.
+    /// </summary>
+    public static async Task RestoreUncommittedAsync(
+        IReadOnlyList<MISTPendingDeletionHandle> deletions)
+    {
+        ArgumentNullException.ThrowIfNull(deletions);
+
+        var errors = new List<Exception>();
+
+        // Restore in reverse order of quarantine.
+        for (var i = deletions.Count - 1; i >= 0; i--)
+        {
+            var deletion = deletions[i];
+
+            try
+            {
+                // Recovery deliberately ignores cancellation.
+                // We are already handling a failed operation.
+                await MISTFileQuarantine.RestoreVerifiedAsync(
+                    deletion.OriginalPath,
+                    deletion.QuarantinePath,
+                    deletion.ExpectedHash,
+                    CancellationToken.None);
+
+                // Remove the journal only after verified
+                // restoration succeeds.
+                File.Delete(deletion.JournalPath);
+            }
+            catch (Exception error)
+            {
+                errors.Add(new IOException(
+                    "M.I.S.T. could not safely restore '" +
+                    deletion.OriginalPath +
+                    "'. The deletion journal must be reviewed.",
+                    error));
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new AggregateException(
+                "One or more quarantined files could not " +
+                "be restored. Manual review is required.",
+                errors);
+        }
+    }
+
+    /// <summary>
     /// This method must only be called AFTER the caller's
     /// database transaction has committed successfully.
     ///
