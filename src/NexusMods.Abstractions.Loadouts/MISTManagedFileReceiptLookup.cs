@@ -15,7 +15,15 @@ namespace NexusMods.Abstractions.Loadouts;
 /// </summary>
 public static class MISTManagedFileReceiptLookup
 {
-    public static bool HasExactlyOneMatchingReceipt(
+    /// <summary>
+    /// Returns a receipt ID only when exactly one receipt exists
+    /// for this installation and destination AND its hash matches
+    /// the actual observed file content.
+    ///
+    /// The caller must obtain observedHash from the live file.
+    /// A receipt is not independent filesystem authorization.
+    /// </summary>
+    public static EntityId? FindExactlyOneMatchingReceiptId(
         IDb database,
         EntityId installationId,
         GamePath path,
@@ -26,17 +34,37 @@ public static class MISTManagedFileReceiptLookup
         var expectedPath =
             path.ToGamePathParentTuple(installationId);
 
-        // A missing receipt or ambiguous receipt history
-        // must not authorize an operation.
+        // Use the generated installation back-reference rather
+        // than scanning all receipts across every game.
         var matches = MISTManagedFileReceipt
-            .All(database)
+            .FindByGameInstall(database, installationId)
             .Where(receipt =>
                 receipt.GameInstallId.Value == installationId &&
                 receipt.Path.Equals(expectedPath))
             .Take(2)
             .ToArray();
 
-        return matches.Length == 1 &&
-               matches[0].DeployedHash == observedHash;
+        // Duplicate records are ambiguous even when their
+        // hashes are identical.
+        if (matches.Length != 1)
+            return null;
+
+        if (matches[0].DeployedHash != observedHash)
+            return null;
+
+        return matches[0].Id;
+    }
+
+    public static bool HasExactlyOneMatchingReceipt(
+        IDb database,
+        EntityId installationId,
+        GamePath path,
+        Hash observedHash)
+    {
+        return FindExactlyOneMatchingReceiptId(
+            database,
+            installationId,
+            path,
+            observedHash).HasValue;
     }
 }

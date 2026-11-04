@@ -1019,6 +1019,11 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
             // The plan was checked before execution, but other
             // actions may have run since then. Verify again using
             // the actual current file contents before deletion.
+            // Capture the exact receipt selected using the
+            // current file contents verified by the guard.
+            // Never select it using cached disk-scan hashes.
+            EntityId? receiptToRetire = null;
+
             await MISTFilesystemMutationGuard.EnsureAuthorizedAsync(
                 new Dictionary<GamePath, SyncNode>
                 {
@@ -1027,13 +1032,36 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
                 candidate =>
                     gameLocations.ToAbsolutePath(candidate).GetFullPath(),
                 (candidate, observedHash) =>
-                    MISTManagedFileReceiptLookup.HasExactlyOneMatchingReceipt(
-                        Connection.Db,
-                        (EntityId)gameMetadataId,
-                        candidate,
-                        observedHash));
+                {
+                    receiptToRetire =
+                        MISTManagedFileReceiptLookup
+                            .FindExactlyOneMatchingReceiptId(
+                                Connection.Db,
+                                (EntityId)gameMetadataId,
+                                candidate,
+                                observedHash);
+
+                    return receiptToRetire.HasValue;
+                });
+
+            // The callback must actually have verified a
+            // unique receipt. Never infer authorization merely
+            // because the guard returned successfully.
+            if (receiptToRetire is not { } verifiedReceiptId)
+            {
+                throw new InvalidOperationException(
+                    "M.I.S.T. cannot delete a file without " +
+                    "exactly one verified deployment receipt.");
+            }
 
             resolvedPath.Delete();
+
+            // Retire the evidence in the SAME database transaction
+            // as the synchronizer's other state changes.
+            //
+            // Do not commit here. The outer RunActions method
+            // controls transaction completion.
+            tx.Delete(verifiedReceiptId, recursive: false);
 
             // Only delete the entry if we're not going to replace it
             if (!node.Actions.HasFlag(Actions.ExtractToDisk))
