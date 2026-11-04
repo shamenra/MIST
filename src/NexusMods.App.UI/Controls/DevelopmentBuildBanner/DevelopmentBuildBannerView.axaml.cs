@@ -39,14 +39,14 @@ public partial class DevelopmentBuildBannerView : ReactiveUserControl<IDevelopme
             }
         );
         
-        var appName = ApplicationConstants.IsDebug ? "DEVELOPMENT USE ONLY" : "Preview";
+        var appName = "M.I.S.T. —";
 
         AppVersion = GetAppVersion();
-        AppName = $"{appName}:";
+        AppName = appName;
     }
 
     private static string GetAppVersion()
     {
-        return ApplicationConstants.IsDebug ? $"Debug build - {ApplicationConstants.CommitHash}" : ApplicationConstants.Version.ToString();
+        return MISTBuildInfo.Version;
     }
 }
