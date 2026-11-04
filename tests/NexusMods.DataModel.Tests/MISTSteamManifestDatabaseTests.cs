@@ -110,6 +110,18 @@ public class MISTSteamManifestDatabaseTests
             .Throw<InvalidOperationException>()
             .WithMessage("*Partial*");
 
+        // Missing manifests warn about uncertainty without rejecting management.
+        SteamResetPreflight.GetManagementAdvisory(
+            GameStore.Steam,
+            "42",
+            [
+                LocatorId.From("101"),
+                LocatorId.From("202"),
+                LocatorId.From("303"),
+            ],
+            result.Db)
+            .Should().Contain("Missing manifest IDs: 202");
+
         // Recognized but empty manifest: reject the reset.
         Action emptyManifest = () =>
             SteamResetPreflight.EnsureCanReset(
@@ -134,6 +146,14 @@ public class MISTSteamManifestDatabaseTests
             .Throw<InvalidOperationException>()
             .WithMessage("*does not belong to Steam app*");
 
+        // Incorrect manifest associations must also produce an advisory.
+        SteamResetPreflight.GetManagementAdvisory(
+            GameStore.Steam,
+            "43",
+            [LocatorId.From("101")],
+            result.Db)
+            .Should().Contain("does not belong to Steam app");
+
         // Steam-specific protection must not affect EGS.
         Action otherStore = () =>
             SteamResetPreflight.EnsureCanReset(
@@ -143,6 +163,14 @@ public class MISTSteamManifestDatabaseTests
                 result.Db);
 
         otherStore.Should().NotThrow();
+
+        // Steam-specific advisories must not affect other stores.
+        SteamResetPreflight.GetManagementAdvisory(
+            GameStore.EGS,
+            "not-a-steam-id",
+            [],
+            result.Db)
+            .Should().BeNull();
     }
 
     [Fact]
@@ -213,6 +241,14 @@ public class MISTSteamManifestDatabaseTests
                 result.Db);
 
         act.Should().NotThrow();
+
+        // A complete synthetic manifest requires no metadata advisory.
+        SteamResetPreflight.GetManagementAdvisory(
+            GameStore.Steam,
+            "42",
+            [LocatorId.From("101")],
+            result.Db)
+            .Should().BeNull();
     }
 
 }

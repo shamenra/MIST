@@ -16,6 +16,45 @@ namespace NexusMods.Abstractions.Games.FileHashes;
 /// </summary>
 public static class SteamResetPreflight
 {
+    /// <summary>
+    /// MIST-003B: Returns an informational warning when installed Steam
+    /// manifest metadata cannot pass the existing reset preflight.
+    ///
+    /// This is advisory only. Missing manifest metadata does not mean
+    /// the game is absent or that ordinary mod management must stop.
+    ///
+    /// A null result does NOT establish mod compatibility or prove
+    /// that the installation is a pristine original-game baseline.
+    /// </summary>
+    public static string? GetManagementAdvisory(
+        GameStore store,
+        string storeIdentifier,
+        IEnumerable<LocatorId> locatorIds,
+        IDb database)
+    {
+        if (store != GameStore.Steam)
+            return null;
+
+        try
+        {
+            EnsureCanReset(
+                store,
+                storeIdentifier,
+                locatorIds,
+                database);
+
+            return null;
+        }
+        catch (InvalidOperationException exception)
+        {
+            return
+                "M.I.S.T. cannot confirm this installation's Steam " +
+                "manifest metadata. The game may have been updated, " +
+                "moved, or modified. Installed mods may be incompatible. " +
+                "Reason: " + exception.Message;
+        }
+    }
+
     public static void EnsureCanReset(
         GameStore store,
         string storeIdentifier,
