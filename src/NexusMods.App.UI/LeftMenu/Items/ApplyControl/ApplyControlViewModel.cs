@@ -276,7 +276,47 @@ public class ApplyControlViewModel : AViewModel<IApplyControlViewModel>, IApplyC
         }
         catch (ExecutableInUseException)
         {
-            await MessageBoxOkViewModel.ShowGameAlreadyRunningError(_serviceProvider, loadout.Installation.Name);
+            await MessageBoxOkViewModel.ShowGameAlreadyRunningError(
+                _serviceProvider,
+                loadout.Installation.Name);
+        }
+        catch (Exception error) when (
+            error is InvalidOperationException or
+            IOException or
+            AggregateException)
+        {
+            // MIST-003C.2:
+            // Do not hide filesystem authorization failures
+            // or incomplete recovery behind a success toast.
+            //
+            // The synchronizer remains responsible for
+            // enforcing safety. This is presentation only.
+            var dialog = DialogFactory.CreateStandardDialog(
+                title: "M.I.S.T. — Apply could not finish",
+                new StandardDialogParameters
+                {
+                    Text =
+                        "M.I.S.T. could not complete this Apply " +
+                        "operation. Some filesystem changes may " +
+                        "require review before retrying." +
+                        "\\n\\nDetails:\\n" +
+                        error.Message
+                },
+                buttonDefinitions:
+                [
+                    new DialogButtonDefinition(
+                        "OK",
+                        ButtonDefinitionId.Accept,
+                        ButtonAction.Accept,
+                        ButtonStyling.Primary)
+                ]);
+
+            var windowManager = _serviceProvider
+                .GetRequiredService<IWindowManager>();
+
+            await windowManager.ShowDialog(
+                dialog,
+                DialogWindowType.Modal);
         }
     }
 }
