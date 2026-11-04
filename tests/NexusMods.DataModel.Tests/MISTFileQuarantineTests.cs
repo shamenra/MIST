@@ -210,6 +210,95 @@ public class MISTFileQuarantineTests
         }
     }
 
+    [Fact]
+    public async Task VerifiedQuarantineCanBeFinalized()
+    {
+        var f = await Fixture.CreateAsync();
+
+        try
+        {
+            await MISTFileQuarantine.MoveVerifiedAsync(
+                f.Original, f.Quarantine, f.Hash);
+
+            await MISTFileQuarantine.FinalizeVerifiedAsync(
+                f.Original, f.Quarantine, f.Hash);
+
+            File.Exists(f.Original).Should().BeFalse();
+            File.Exists(f.Quarantine).Should().BeFalse();
+        }
+        finally
+        {
+            f.Cleanup();
+        }
+    }
+
+    [Fact]
+    public async Task ModifiedQuarantineCannotBeFinalized()
+    {
+        var f = await Fixture.CreateAsync();
+
+        try
+        {
+            await MISTFileQuarantine.MoveVerifiedAsync(
+                f.Original, f.Quarantine, f.Hash);
+
+            var modified = Encoding.UTF8.GetBytes(
+                "Modified while awaiting database commit");
+
+            await File.WriteAllBytesAsync(
+                f.Quarantine, modified);
+
+            Func<Task> act = () =>
+                MISTFileQuarantine.FinalizeVerifiedAsync(
+                    f.Original, f.Quarantine, f.Hash);
+
+            await act.Should().ThrowAsync<IOException>();
+
+            File.ReadAllBytes(f.Quarantine)
+                .Should().Equal(modified);
+
+            File.Exists(f.Original).Should().BeFalse();
+        }
+        finally
+        {
+            f.Cleanup();
+        }
+    }
+
+    [Fact]
+    public async Task FinalizationPreservesOccupiedOriginal()
+    {
+        var f = await Fixture.CreateAsync();
+
+        try
+        {
+            await MISTFileQuarantine.MoveVerifiedAsync(
+                f.Original, f.Quarantine, f.Hash);
+
+            var replacement = Encoding.UTF8.GetBytes(
+                "User-created replacement");
+
+            await File.WriteAllBytesAsync(
+                f.Original, replacement);
+
+            Func<Task> act = () =>
+                MISTFileQuarantine.FinalizeVerifiedAsync(
+                    f.Original, f.Quarantine, f.Hash);
+
+            await act.Should().ThrowAsync<IOException>();
+
+            File.ReadAllBytes(f.Original)
+                .Should().Equal(replacement);
+
+            File.ReadAllBytes(f.Quarantine)
+                .Should().Equal(f.Content);
+        }
+        finally
+        {
+            f.Cleanup();
+        }
+    }
+
     private sealed class Fixture
     {
         public required string Directory { get; init; }

@@ -107,6 +107,53 @@ public static class MISTFileQuarantine
             overwrite: false);
     }
 
+    /// <summary>
+    /// Finalizes a quarantined deletion after the corresponding
+    /// database transaction has successfully committed.
+    ///
+    /// This method does not authorize deletion on its own.
+    /// The caller must have a committed transaction and a
+    /// matching persistent deletion journal.
+    ///
+    /// High-level path APIs cannot eliminate concurrent
+    /// filesystem replacement races. Do not use this as
+    /// a substitute for handle-based filesystem operations.
+    /// </summary>
+    public static async Task FinalizeVerifiedAsync(
+        string originalPath,
+        string quarantinePath,
+        Hash expectedHash,
+        CancellationToken cancellationToken = default)
+    {
+        var (original, quarantine) =
+            ValidatePaths(originalPath, quarantinePath);
+
+        // Never finalize a symbolic link, directory, or
+        // file outside the validated quarantine location.
+        EnsureOrdinaryFile(quarantine);
+
+        // If someone recreated the original destination,
+        // leave the quarantine intact for investigation.
+        EnsureAbsent(original);
+
+        var observed = await HashFileAsync(
+            quarantine, cancellationToken);
+
+        if (observed != expectedHash)
+        {
+            throw new IOException(
+                "M.I.S.T. refused to finalize quarantine: " +
+                "file contents differ from the recorded hash. " +
+                "Preserving the file for manual review.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // All ordinary checks passed. This is still subject
+        // to the path-replacement race documented above.
+        File.Delete(quarantine);
+    }
+
     private static (string Original, string Quarantine)
         ValidatePaths(
             string originalPath,
