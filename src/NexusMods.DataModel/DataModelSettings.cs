@@ -106,7 +106,7 @@ public record DataModelSettings : ISettings
         );
 
         // NOTE: OSX ".App" is apparently special, using _ instead of . to prevent weirdness
-        baseDirectoryName = os.IsOSX ? "NexusMods_App" : "ModIntegrationAndSortingTechnology";
+        baseDirectoryName = os.IsOSX ? "MIST_App" : "ModIntegrationAndSortingTechnology";
         return baseKnownPath;
     }
 }
