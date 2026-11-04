@@ -424,6 +424,8 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
 
         // Journal files published during this operation.
         var pendingJournals = new List<string>();
+        var pendingDeletions =
+            new List<MISTPendingDeletionHandle>();
         HashSet<GamePath> foldersWithDeletedFiles = [];
         EntityId? overridesGroup = null;
 
@@ -463,7 +465,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
 
                 case Actions.DeleteFromDisk:
                     job?.SetStatus("Deleting files");
-                    await ActionDeleteFromDisk(syncTree, locations, tx, gameMetadataId, foldersWithDeletedFiles, job);
+                    await ActionDeleteFromDisk(syncTree, locations, tx, gameMetadataId, foldersWithDeletedFiles, pendingDeletions, job);
                     break;
 
                 case Actions.ExtractToDisk:
@@ -507,6 +509,14 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         {
             MISTDeploymentJournal.Complete(pending);
         }
+
+        // The database has committed. Only now may verified
+        // deletion quarantines be finalized.
+        //
+        // Failed finalization preserves the journal and
+        // quarantined contents for later reconciliation.
+        await MISTDeletionJournal.FinalizeCommittedAsync(
+            pendingDeletions);
 
         loadout = loadout.Rebase();
         var newState = DiskStateEntry.FindByGame(loadout.Db, loadout.Installation);
@@ -669,6 +679,8 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         var locations = gameInstallation.Locations;
 
         var pendingJournals = new List<string>();
+        var pendingDeletions =
+            new List<MISTPendingDeletionHandle>();
 
         HashSet<GamePath> foldersWithDeletedFiles = [];
 
@@ -711,7 +723,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
                     break;
 
                 case Actions.DeleteFromDisk:
-                    await ActionDeleteFromDisk(syncTree, locations, tx, metadata, foldersWithDeletedFiles);
+                    await ActionDeleteFromDisk(syncTree, locations, tx, metadata, foldersWithDeletedFiles, pendingDeletions);
                     break;
 
                 case Actions.ExtractToDisk:
@@ -751,6 +763,14 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         {
             MISTDeploymentJournal.Complete(pending);
         }
+
+        // The database has committed. Only now may verified
+        // deletion quarantines be finalized.
+        //
+        // Failed finalization preserves the journal and
+        // quarantined contents for later reconciliation.
+        await MISTDeletionJournal.FinalizeCommittedAsync(
+            pendingDeletions);
 
         var newMetadata = metadata.Rebase(result.Db);
 
@@ -997,6 +1017,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         ITransaction tx,
         GameInstallMetadataId gameMetadataId,
         HashSet<GamePath> foldersWithDeletedFiles,
+        List<MISTPendingDeletionHandle> pendingDeletions,
         SynchronizeLoadoutJob? job = null)
     {
         var itemIndex = 0;
@@ -1023,6 +1044,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
             // current file contents verified by the guard.
             // Never select it using cached disk-scan hashes.
             EntityId? receiptToRetire = null;
+            Hash? verifiedHash = null;
 
             await MISTFilesystemMutationGuard.EnsureAuthorizedAsync(
                 new Dictionary<GamePath, SyncNode>
@@ -1041,20 +1063,49 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
                                 candidate,
                                 observedHash);
 
+                    if (receiptToRetire.HasValue)
+                        verifiedHash = observedHash;
+
                     return receiptToRetire.HasValue;
                 });
 
             // The callback must actually have verified a
             // unique receipt. Never infer authorization merely
             // because the guard returned successfully.
-            if (receiptToRetire is not { } verifiedReceiptId)
+            if (receiptToRetire is not { } verifiedReceiptId ||
+                verifiedHash is not { } expectedHash)
             {
                 throw new InvalidOperationException(
                     "M.I.S.T. cannot delete a file without " +
                     "exactly one verified deployment receipt.");
             }
 
-            resolvedPath.Delete();
+            // MIST-003B.5P.3:
+            // Persist the deletion intent BEFORE removing the
+            // file from its original destination.
+            var originalFile = resolvedPath.GetFullPath();
+            var quarantineFile =
+                MISTFileQuarantine.CreateQuarantinePath(
+                    originalFile);
+
+            var deletion =
+                await MISTDeletionJournal.BeginAsync(
+                    MISTDeploymentJournal.GetDefaultDirectory(),
+                    gameMetadataId.ToString(),
+                    verifiedReceiptId.ToString(),
+                    originalFile,
+                    quarantineFile,
+                    expectedHash);
+
+            // Track the operation immediately after journaling.
+            // If the move fails, the journal remains available
+            // for read-only recovery inspection.
+            pendingDeletions.Add(deletion);
+
+            await MISTFileQuarantine.MoveVerifiedAsync(
+                originalFile,
+                quarantineFile,
+                expectedHash);
 
             // Retire the evidence in the SAME database transaction
             // as the synchronizer's other state changes.
