@@ -21,10 +21,18 @@ namespace NexusMods.Networking.Steam;
 /// on a separate callback handler for the response. This class attempts to abstract this process and
 /// provide a cleaner interface for other parts of the app.
 /// </summary>
-public class Session : ISteamSession
+public class Session : ISteamSession, IAsyncDisposable
 {
-    private bool _isConnected = false;
     private bool _isLoggedOn = false;
+
+    // MIST-004C.2: One callback pump and one shared login attempt.
+    private readonly object _connectionGate = new();
+    private readonly CancellationTokenSource _callbackStop = new();
+    private Task? _callbackTask;
+    private TaskCompletionSource<bool>? _loginReady;
+    private bool _connecting;
+    private bool _disposed;
+    private bool _retired;
 
     internal readonly ILogger<Session> _logger;
     private readonly IAuthInterventionHandler _handler;
@@ -83,10 +91,11 @@ public class Session : ISteamSession
         // Some parts of this interface use callbacks instead of more natural async methods. So we need to register
         // those callbacks here.
         _callbacks = new CallbackManager(_steamClient);
-        _callbacks.Subscribe(WrapAsync<SteamClient.ConnectedCallback>(ConnectedCallback));
-        _callbacks.Subscribe(WrapAsync<SteamClient.DisconnectedCallback>(DisconnectedCallback));
-        _callbacks.Subscribe(WrapAsync<SteamUser.LoggedOnCallback>(LoggedOnCallback));
-        _callbacks.Subscribe(WrapAsync<SteamApps.LicenseListCallback>(LicenseListCallback));
+        _callbacks.Subscribe<SteamClient.ConnectedCallback>(
+            callback => { _ = RunConnectedCallbackSafely(callback); });
+        _callbacks.Subscribe<SteamClient.DisconnectedCallback>(DisconnectedCallback);
+        _callbacks.Subscribe<SteamUser.LoggedOnCallback>(LoggedOnCallback);
+        _callbacks.Subscribe<SteamApps.LicenseListCallback>(_ => { });
 
         _pipeline = new ResiliencePipelineBuilder()
             .AddRetry(new RetryStrategyOptions())
@@ -109,31 +118,115 @@ public class Session : ISteamSession
     /// </summary>
     internal CDNPool CDNPool => _cdnPool;
 
-    private Task LicenseListCallback(SteamApps.LicenseListCallback arg)
+    private void LoggedOnCallback(SteamUser.LoggedOnCallback callback)
+        => ApplyLoginResult(callback.Result);
+
+    // Kept separate so connection transitions can be tested offline.
+    private void ApplyLoginResult(EResult result)
     {
-        return Task.CompletedTask;
-    }
-    
-    private async Task LoggedOnCallback(SteamUser.LoggedOnCallback callback)
-    {
-        _isLoggedOn = true;
-        _logger.LogInformation("Logged on to Steam network.");
+        TaskCompletionSource<bool>? ready;
+
+        lock (_connectionGate)
+        {
+            // Neither a late success nor a late failure may
+            // modify a session without a pending login.
+            if (_disposed || !_connecting)
+                return;
+
+            _connecting = false;
+            _isLoggedOn = result == EResult.OK;
+            if (result != EResult.OK)
+                _retired = true;
+            ready = _loginReady;
+        }
+
+        if (result == EResult.OK)
+        {
+            ready?.TrySetResult(true);
+            _logger.LogInformation("Logged on to Steam network.");
+        }
+        else
+        {
+            var exception = new InvalidOperationException(
+                $"Steam login failed: {result}");
+
+            ready?.TrySetException(exception);
+
+            _logger.LogWarning(
+                "Steam login rejected: {Result}", result);
+        }
     }
 
-    private async Task DisconnectedCallback(SteamClient.DisconnectedCallback callback)
+    private void DisconnectedCallback(SteamClient.DisconnectedCallback callback)
     {
-        _logger.LogInformation("Disconnected from Steam network.");
+        TaskCompletionSource<bool>? ready;
+        lock (_connectionGate)
+        {
+            _retired = true;
+            _isLoggedOn = false;
+            _connecting = false;
+            ready = _loginReady;
+        }
+
+        ready?.TrySetException(
+            new IOException("Steam disconnected before login completed."));
+
+        _logger.LogWarning("Disconnected from Steam network.");
     }
-    
+
+    private void FailConnection(Exception exception)
+    {
+        TaskCompletionSource<bool>? ready;
+        lock (_connectionGate)
+        {
+            _retired = true;
+            _isLoggedOn = false;
+            _connecting = false;
+            ready = _loginReady;
+        }
+
+        ready?.TrySetException(exception);
+        _logger.LogError(exception, "Steam connection failed.");
+    }
+
+    private bool CanAuthenticate()
+    {
+        lock (_connectionGate)
+        {
+            return !_disposed && !_retired && _connecting;
+        }
+    }
+
+    private async Task RunConnectedCallbackSafely(
+        SteamClient.ConnectedCallback callback)
+    {
+        try
+        {
+            await ConnectedCallback(callback);
+        }
+        catch (Exception exception)
+        {
+            FailConnection(exception);
+        }
+    }
+
     private async Task ConnectedCallback(SteamClient.ConnectedCallback callback)
     {
-        _isConnected = true;
+        lock (_connectionGate)
+        {
+            if (_disposed || _retired || !_connecting) return;
+        }
+
         var (success, data) = await _authStorage.TryLoad();
+
+        if (!CanAuthenticate())
+            return;
         if (success)
         {
             _logger.LogInformation("Using saved auth data to log in.");
             var authData = AuthData.Load(data);
             
+            if (!CanAuthenticate()) return;
             _steamUser.LogOn(new SteamUser.LogOnDetails
                 {
                     Username = authData.Username,
@@ -151,12 +244,14 @@ public class Session : ISteamSession
             });
             
             var pollResponse = await authSession.PollingWaitForResultAsync();
+            if (!CanAuthenticate()) return;
             await _authStorage.SaveAsync(new AuthData
             {
                 Username = pollResponse.AccountName,
                 RefreshToken = pollResponse.RefreshToken,
             }.Save());
             
+            if (!CanAuthenticate()) return;
             _steamUser.LogOn(new SteamUser.LogOnDetails
                 {
                     Username = pollResponse.AccountName,
@@ -169,10 +264,12 @@ public class Session : ISteamSession
             _logger.LogInformation("No saved auth data, logging in via QR code.");
             var authSession = await _steamClient.Authentication.BeginAuthSessionViaQRAsync(new AuthSessionDetails());
 
-            authSession.ChallengeURLChanged = () => { _handler.ShowQRCode(new Uri(authSession.ChallengeURL, UriKind.Absolute), CancellationToken.None); };
+            authSession.ChallengeURLChanged = () => { if (CanAuthenticate()) _handler.ShowQRCode(new Uri(authSession.ChallengeURL, UriKind.Absolute), CancellationToken.None); };
 
+            if (!CanAuthenticate()) return;
             _handler.ShowQRCode(new Uri(authSession.ChallengeURL, UriKind.Absolute), CancellationToken.None);
             var pollResponse = await authSession.PollingWaitForResultAsync();
+            if (!CanAuthenticate()) return;
 
             await _authStorage.SaveAsync(new AuthData
             {
@@ -180,6 +277,7 @@ public class Session : ISteamSession
                 RefreshToken = pollResponse.RefreshToken,
             }.Save());
             
+            if (!CanAuthenticate()) return;
             _steamUser.LogOn(new SteamUser.LogOnDetails
                 {
                     Username = pollResponse.AccountName,
@@ -192,11 +290,6 @@ public class Session : ISteamSession
     /// <summary>
     /// Wraps an async action in a synchronous action.
     /// </summary>
-    private Action<T> WrapAsync<T>(Func<T, Task> action)
-    {
-        return arg => Task.Run(async () => await action(arg));
-    }
-
     /// <inheritdoc />
     public async Task Connect(CancellationToken token)
     {
@@ -219,16 +312,95 @@ public class Session : ISteamSession
     /// <summary>
     /// Performs a login if required, returns once the login is complete
     /// </summary>
+    private async Task PumpCallbacksAsync()
+    {
+        try
+        {
+            while (!_callbackStop.IsCancellationRequested)
+            {
+                await _callbacks.RunWaitCallbackAsync(
+                    _callbackStop.Token);
+            }
+        }
+        catch (OperationCanceledException)
+            when (_callbackStop.IsCancellationRequested)
+        {
+            // Normal shutdown.
+        }
+        catch (Exception exception)
+        {
+            FailConnection(exception);
+        }
+    }
+
     private async Task ConnectedAsync(CancellationToken cancellationToken)
     {
-        if (!_isConnected)
+        Task readyTask;
+
+        lock (_connectionGate)
         {
-            _steamClient.Connect();
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            if (_retired)
+                throw new IOException(
+                    "Steam session is no longer usable; create a new session.");
+
+            if (_isLoggedOn)
+                return;
+
+            if (_callbackTask is null || _callbackTask.IsCompleted)
+                _callbackTask = Task.Run(PumpCallbacksAsync);
+
+            if (!_connecting)
+            {
+                _connecting = true;
+                _loginReady = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+
+                try
+                {
+                    _steamClient.Connect();
+                }
+                catch (Exception exception)
+                {
+                    _connecting = false;
+                    _loginReady.TrySetException(exception);
+                }
+            }
+
+            readyTask = _loginReady!.Task;
         }
-        
-        while (!_isLoggedOn)
+
+        // Cancellation stops this caller's wait, not the shared
+        // Steam connection attempt.
+        await readyTask.WaitAsync(cancellationToken);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Task? pump;
+
+        lock (_connectionGate)
         {
-            await _callbacks.RunWaitCallbackAsync(cancellationToken);
+            if (_disposed) return;
+            _disposed = true;
+            _loginReady?.TrySetException(
+                new ObjectDisposedException(nameof(Session)));
+            pump = _callbackTask;
+        }
+
+        _callbackStop.Cancel();
+
+        try
+        {
+            _steamClient.Disconnect();
+        }
+        finally
+        {
+            if (pump is not null)
+                await pump;
+
+            _callbackStop.Dispose();
         }
     }
 
