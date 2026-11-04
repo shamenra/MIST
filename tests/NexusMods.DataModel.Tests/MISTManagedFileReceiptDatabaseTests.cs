@@ -98,5 +98,57 @@ public class MISTManagedFileReceiptDatabaseTests
 
         loaded.DeployedHash.Should().Be(
             hashes.XxHash3);
+
+        // A valid receipt matches the installation, path,
+        // and observed content hash.
+        MISTManagedFileReceiptLookup.HasExactlyOneMatchingReceipt(
+            result.Db,
+            savedInstallation.Id,
+            expectedPath,
+            hashes.XxHash3)
+            .Should().BeTrue();
+
+        // A receipt must not authorize modification if the
+        // observed file contents no longer match.
+        MISTManagedFileReceiptLookup.HasExactlyOneMatchingReceipt(
+            result.Db,
+            savedInstallation.Id,
+            expectedPath,
+            NexusMods.Hashing.xxHash3.Hash.Zero)
+            .Should().BeFalse();
+
+        // A receipt for one destination cannot authorize
+        // changes to another destination.
+        var unrelatedPath = new GamePath(
+            LocationId.Game,
+            RelativePath.FromUnsanitizedInput(
+                "archive/pc/mod/unmanaged.archive"));
+
+        MISTManagedFileReceiptLookup.HasExactlyOneMatchingReceipt(
+            result.Db,
+            savedInstallation.Id,
+            unrelatedPath,
+            hashes.XxHash3)
+            .Should().BeFalse();
+
+        // Ambiguous deployment history is not authorization.
+        using var duplicateTx = connection.BeginTransaction();
+
+        _ = new MISTManagedFileReceipt.New(duplicateTx)
+        {
+            GameInstallId = savedInstallation.Id,
+            Path = expectedPath.ToGamePathParentTuple(
+                savedInstallation.Id),
+            DeployedHash = hashes.XxHash3,
+        };
+
+        var duplicateResult = await duplicateTx.Commit();
+
+        MISTManagedFileReceiptLookup.HasExactlyOneMatchingReceipt(
+            duplicateResult.Db,
+            savedInstallation.Id,
+            expectedPath,
+            hashes.XxHash3)
+            .Should().BeFalse();
     }
 }
