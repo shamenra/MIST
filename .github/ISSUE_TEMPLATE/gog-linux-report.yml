@@ -1,0 +1,78 @@
+name: Linux GOG detection report
+description: Report successful or failed GOG game discovery in M.I.S.T. on Linux
+title: "[GOG/Linux] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        GOG support on Linux is **unverified / under development**. Reports of both success and failure help improve it. Do not include passwords, OAuth callback URLs, API keys, account IDs, or unredacted private logs.
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Outcome
+      options:
+        - Game was detected
+        - Game was not detected
+        - Game detected incorrectly
+        - Other issue
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game title and GOG product ID (if known)
+      placeholder: "Example Game, product ID unknown"
+    validations:
+      required: true
+  - type: dropdown
+    id: launcher
+    attributes:
+      label: How was the game installed?
+      options:
+        - Heroic (native)
+        - Heroic (Flatpak)
+        - Lutris
+        - Minigalaxy
+        - GOG offline installer (native Linux)
+        - GOG Windows installer under Wine / Proton
+        - Other / unknown
+    validations:
+      required: true
+  - type: input
+    id: linux
+    attributes:
+      label: Linux distribution and desktop environment
+      placeholder: "Ubuntu 24.04, KDE Plasma"
+    validations:
+      required: true
+  - type: input
+    id: mist-version
+    attributes:
+      label: M.I.S.T. version / build
+      placeholder: "v0.6.0-dev.1 · build abcdef12"
+    validations:
+      required: true
+  - type: textarea
+    id: location
+    attributes:
+      label: Installation layout
+      description: Give a general path pattern and storefront, removing personally identifying information where appropriate.
+      placeholder: "Secondary drive/GOG/GameTitle; native or Wine prefix"
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps and observed result
+      description: Explain what you did, what M.I.S.T. showed, and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant redacted logs (optional)
+      render: text
+      description: Only the relevant lines. Remove tokens, OAuth callback URLs, account identifiers, and personal information.
+    validations:
+      required: false
