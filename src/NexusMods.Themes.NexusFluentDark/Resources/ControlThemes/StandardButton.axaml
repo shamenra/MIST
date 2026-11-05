@@ -236,7 +236,7 @@
     <StaticResource x:Key="ButtonPrimaryStrongForegroundPressed" ResourceKey="NeutralInvertedBrush" />
     <StaticResource x:Key="ButtonPrimaryStrongBorderBrushPressed" ResourceKey="StrokeTranslucentModerateBrush" />
     <SolidColorBrush x:Key="ButtonPrimaryStrongBackgroundDisabled"
-                     Color="{StaticResource PrimaryModerate}"
+                     Color="#00D9FF"
                      Opacity="{StaticResource OpacityDisabledElement}" />
     <StaticResource x:Key="ButtonPrimaryStrongForegroundDisabled" ResourceKey="NeutralInvertedBrush" />
     <StaticResource x:Key="ButtonPrimaryStrongBorderBrushDisabled" ResourceKey="StrokeTranslucentModerateBrush" />

@@ -53,7 +53,6 @@ namespace NexusMods.App.UI.Pages.MyGames;
 [UsedImplicitly]
 public class MyGamesViewModel : APageViewModel<IMyGamesViewModel>, IMyGamesViewModel
 {
-    private const string TrelloPublicRoadmapUrl = "https://trello.com/b/gPzMuIr3/nexus-mods-app-roadmap";
 
     private readonly ILibraryService _libraryService;
     private readonly CollectionDownloader _collectionDownloader;
@@ -103,11 +102,8 @@ public class MyGamesViewModel : APageViewModel<IMyGamesViewModel>, IMyGamesViewM
         _syncService = syncService;
         _windowManager = windowManager;
 
-        OpenRoadmapCommand = ReactiveCommand.Create(() =>
-        {
-            var uri = new Uri(TrelloPublicRoadmapUrl);
-            osInterop.OpenUri(uri);
-        });
+        // M.I.S.T. project roadmap: development plan and supported-game priorities.
+        OpenRoadmapCommand = ReactiveCommand.Create(() => osInterop.OpenUri(ConstantLinks.RoadmapUri));
 
         this.WhenActivated(d =>
             {

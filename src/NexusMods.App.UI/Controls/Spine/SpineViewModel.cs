@@ -9,7 +9,9 @@ using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NexusMods.Abstractions.Games;
+using NexusMods.Abstractions.Games.FileHashes;
 using NexusMods.Abstractions.Loadouts;
+using NexusMods.App.UI.Controls.GameWidget;
 using NexusMods.App.UI.Controls.LoadoutBadge;
 using NexusMods.App.UI.Controls.Navigation;
 using NexusMods.App.UI.Controls.Spine.Buttons;
@@ -25,6 +27,7 @@ using NexusMods.App.UI.Windows;
 using NexusMods.App.UI.WorkspaceAttachments;
 using NexusMods.App.UI.WorkspaceSystem;
 using NexusMods.MnemonicDB.Abstractions;
+using NexusMods.Sdk.Games;
 using NexusMods.Sdk.Loadouts;
 using NexusMods.Sdk.NexusModsApi;
 using NexusMods.UI.Sdk;
@@ -99,11 +102,61 @@ public class SpineViewModel : AViewModel<ISpineViewModel>, ISpineViewModel
                     .Filter(loadout => loadout.IsVisible())
                     .TransformAsync(async loadout =>
                         {
-                            await using var iconStream = await loadout.InstallationInstance.Game.IconImage.GetStreamAsync();
+                            // MIST-006-12B: Prefer Steam's cached *square game icon*.
+                            // Use the installation's own App ID, never title matching.
+                            // Keep the existing bundled icon for non-Steam games and cache misses.
+                            Bitmap? icon = null;
+                            if (loadout.Installation.Store == GameStore.Steam &&
+                                MISTSteamBuildIdentityReader.TryReadForGameFolder(
+                                    loadout.Installation.Path, out var identity) &&
+                                MISTSteamArtworkResolver.TryFindIconArt(identity!.AppId, out var iconPath))
+                            {
+                                try
+                                {
+                                    using var cachedIconStream = File.OpenRead(iconPath);
+                                    icon = Bitmap.DecodeToWidth(cachedIconStream, (int)ImageSizes.GameThumbnail.Width);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning(ex,
+                                        "Cannot load cached Steam icon for {GameName}; using bundled icon",
+                                        loadout.InstallationInstance.Game.DisplayName);
+                                }
+                            }
+
+                            // MIST-006-12C: If Steam has no square game icon, compose
+                            // its transparent library logo over local background art.
+                            // Never stretch the wide logo into a square.
+                            if (icon is null && loadout.Installation.Store == GameStore.Steam &&
+                                MISTSteamBuildIdentityReader.TryReadForGameFolder(
+                                    loadout.Installation.Path, out var logoIdentity) &&
+                                MISTSteamArtworkResolver.TryFindLogoArt(logoIdentity!.AppId, out var logoPath))
+                            {
+                                try
+                                {
+                                    string? backdropPath = MISTSteamArtworkResolver.TryFindSidebarBackdrop(
+                                        logoIdentity.AppId, out var foundBackdrop) ? foundBackdrop : null;
+                                    icon = MISTSteamSidebarIconRenderer.Render(
+                                        logoPath, backdropPath, (int)ImageSizes.GameThumbnail.Width);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning(ex,
+                                        "Cannot render cached Steam logo for {GameName}; using bundled icon",
+                                        loadout.InstallationInstance.Game.DisplayName);
+                                }
+                            }
+
+                            if (icon is null)
+                            {
+                                await using var bundledIconStream =
+                                    await loadout.InstallationInstance.Game.IconImage.GetStreamAsync();
+                                icon = LoadImageFromStream(bundledIconStream);
+                            }
 
                             var vm = serviceProvider.GetRequiredService<IImageButtonViewModel>();
                             vm.Name = loadout.InstallationInstance.Game.DisplayName + " - " + loadout.Name;
-                            vm.Image = LoadImageFromStream(iconStream);
+                            vm.Image = icon!;
                             vm.LoadoutBadgeViewModel = new LoadoutBadgeViewModel(_conn, _syncService, hideOnSingleLoadout: true);
                             vm.LoadoutBadgeViewModel.LoadoutValue = loadout;
                             vm.WorkspaceContext = new LoadoutContext { LoadoutId = loadout.LoadoutId };

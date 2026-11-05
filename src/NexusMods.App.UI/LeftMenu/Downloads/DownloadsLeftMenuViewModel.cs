@@ -1,4 +1,8 @@
 using System.Collections.ObjectModel;
+using Avalonia.Media.Imaging;
+using NexusMods.Abstractions.Games.FileHashes;
+using NexusMods.App.UI.Controls.GameWidget;
+using System.IO;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using DynamicData;
@@ -72,6 +76,57 @@ public class DownloadsLeftMenuViewModel : AViewModel<IDownloadsLeftMenuViewModel
         });
     }
 
+    /// <summary>
+    /// Match the main game spine's artwork order without changing download data:
+    /// Steam's square icon; otherwise its logo over a header; otherwise bundled.
+    /// Games not installed via Steam always use their bundled icon.
+    /// </summary>
+    private static async ValueTask<Bitmap?> LoadPerGameDownloadIconAsync(
+        GameInstallation installation,
+        ILogger<DownloadsLeftMenuViewModel> logger)
+    {
+        int size = (int)ImageSizes.LeftMenuIcon.Width;
+        if (installation.LocatorResult.Store == GameStore.Steam &&
+            MISTSteamBuildIdentityReader.TryReadForGameFolder(
+                installation.LocatorResult.Path.ToString(), out var identity))
+        {
+            var appId = identity!.AppId;
+
+            if (MISTSteamArtworkResolver.TryFindIconArt(appId, out var iconPath))
+            {
+                try
+                {
+                    await using var cachedIconStream = File.OpenRead(iconPath);
+                    return Bitmap.DecodeToWidth(cachedIconStream, size);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "Cannot decode Steam Downloads icon for {GameName}; trying logo artwork",
+                        installation.Game.DisplayName);
+                }
+            }
+
+            if (MISTSteamArtworkResolver.TryFindLogoArt(appId, out var logoPath))
+            {
+                try
+                {
+                    string? backdropPath = MISTSteamArtworkResolver.TryFindSidebarBackdrop(
+                        appId, out var foundBackdrop) ? foundBackdrop : null;
+                    return MISTSteamSidebarIconRenderer.Render(logoPath, backdropPath, size);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "Cannot render Steam Downloads logo for {GameName}; using bundled icon",
+                        installation.Game.DisplayName);
+                }
+            }
+        }
+
+        return await ImageHelper.LoadGameIconAsync((IGame)installation.Game, size, logger);
+    }
+
     private static ILeftMenuItemViewModel CreatePerGameDownloadItem(
         GameInstallation gameInstallation,
         IWorkspaceController workspaceController,
@@ -92,9 +147,10 @@ public class DownloadsLeftMenuViewModel : AViewModel<IDownloadsLeftMenuViewModel
             Icon = IconValues.FolderEditOutline, // Initial fallback icon
         };
 
-        // Load game icon asynchronously
-        R3.Observable.Return((IGame)gameInstallation.Game)
-            .SelectAwait((game, _) => ImageHelper.LoadGameIconAsync(game, (int)ImageSizes.LeftMenuIcon.Width, logger))
+        // MIST-006-12D: Downloads uses the same Steam artwork as the game spine.
+        // Resolve art from this exact installation; do not match games by name.
+        R3.Observable.Return(gameInstallation)
+            .SelectAwait((installation, _) => LoadPerGameDownloadIconAsync(installation, logger))
             .AsSystemObservable()
             .WhereNotNull()
             .ObserveOn(RxApp.MainThreadScheduler)

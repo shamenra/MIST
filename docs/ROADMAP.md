@@ -52,6 +52,8 @@ See [SUPPORTED-GAMES.md](SUPPORTED-GAMES.md) for the current verified-versus-inh
 
 | Status | Area | Planned outcome |
 | --- | --- | --- |
+| Planned | Manual game support | User-selected game installation path with read-only validation and safe supported-adapter gating (MIST-006-13) |
+| Planned / research | Recognition of existing Nexus mods | Read-only inventory and evidence-backed Nexus matches; user-confirmed adoption only (MIST-006-13) |
 | Done locally | Steam artwork | Use locally cached Steam cover art with bundled fallback (MIST-006-07A) |
 | In progress | Documentation & project links | M.I.S.T. README, roadmap, changelog, and GitHub buttons (MIST-006-08) |
 | Planned | Linux OAuth packaging | Reliable `nxm://` callback handler registration for standalone AppImages |
@@ -61,6 +63,29 @@ See [SUPPORTED-GAMES.md](SUPPORTED-GAMES.md) for the current verified-versus-inh
 | Planned | Artwork preferences | Allow user-selected cover artwork with a safe fallback |
 | Planned | Logging | Move future app log filenames to a M.I.S.T. prefix while retaining historic logs |
 | Planned | Release process | Clear previews, release notes, validation, and reproducible AppImage smoke tests |
+
+## Manual game support and existing Nexus mod recognition — MIST-006-13
+
+Both capabilities are **planned, not yet implemented**. Detection and identification must remain separate from permission to modify a game installation.
+
+### Manual game support — planned
+
+- Let a user select an existing game installation directory if Steam, GOG, Heroic, Lutris, or another automatic locator misses it. Preserve storefront and edition details when known; allow an explicit *unknown storefront* state rather than guessing.
+- When the game already has a supported M.I.S.T. adapter, validate the selected directory read-only against that adapter (expected game files, edition, known mod paths, and writable boundaries) and display a preview before enabling mod management.
+- For an unknown or unsupported title, allow a **catalog-only/manual entry** without claiming deployment support. A new game-specific adapter and safety tests are still required before enabling install/remove operations.
+- Store the manual path as user-configured metadata; support multiple installations, removable drives, changed locations, and a safe recheck if files disappear. Do not silently redirect a missing installation.
+- Acceptance: a valid existing installation can be added and reopened; an invalid or unrelated directory is rejected without modification; manual discovery never bypasses receipt-based reversal and original-file protection.
+
+### Recognize already-installed Nexus mods — planned / research
+
+- Add a **read-only existing-mod inventory** for supported games, starting with Cyberpunk 2077's known mod locations (for example archive, RED4ext, CET, redscript, and related content when relevant). Never assume every file in a mod directory belongs to one mod.
+- Where available, compare locally installed filenames, hashes, archive manifests, known Nexus Mod IDs/file IDs, installer metadata, and user-provided download records against reliable Nexus metadata. A common filename or similar title alone is **not proof of a match**.
+- Label results **Confirmed**, **Possible — needs confirmation**, or **Unknown/local mod**; show which evidence supports each identification and let users correct it. Preserve non-Nexus, manually installed, and custom mods.
+- Offer an explicit **adopt/import into management** operation only after the user reviews the detected files and potential conflicts. Existing files remain untouched until the user chooses a safe action; do not auto-delete, replace, or enable anything during inventory.
+- Model ownership/provenance carefully: adoption needs an auditable, per-file baseline/receipt, conflict handling, and rollback behavior that cannot erase files M.I.S.T. did not deploy. For uncertain provenance, prefer **track without taking ownership** until a safe migration design is validated.
+- Acceptance: read-only scan causes zero changes to game files; matches are evidence-backed; unknown/modified files remain visible; confirmed and adopted mods survive rescans and loadout switches without data loss.
+
+See [supported-game validation](SUPPORTED-GAMES.md) before interpreting either planned feature as universal mod-management support.
 
 ## Tracking progress
 

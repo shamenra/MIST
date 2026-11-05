@@ -29,6 +29,7 @@ It keeps useful Nexus Mods integration, including account authentication and sup
 | Resource | What's inside |
 | --- | --- |
 | [**Download M.I.S.T.**](https://github.com/shamenra/MIST/releases) | Linux x86_64 AppImage builds and release notes |
+| [**Preview v0.6.0-dev.2 notes**](docs/RELEASE-NOTES-v0.6.0-dev.2.md) | What changed in the latest preview and what is still only planned |
 | [**Game & feature roadmap**](docs/ROADMAP.md) | Games we want to add, upcoming features, and validation criteria |
 | [**Supported games**](docs/SUPPORTED-GAMES.md) | What we've tested, what we inherited, and what remains experimental |
 | [**M.I.S.T. changelog**](CHANGELOG.md) | Important fixes, game additions, and user-facing changes |

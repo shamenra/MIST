@@ -124,13 +124,40 @@ public record LoggingSettings : ISettings
 
         return new LoggingSettings
         {
-            MainProcessLogFilePath = new ConfigurablePath(baseKnownPath, $"{baseDirectoryName}/nexusmods.app.main.current.log"),
-            MainProcessArchiveFilePath = new ConfigurablePath(baseKnownPath, $"{baseDirectoryName}/nexusmods.app.main.{{##}}.log"),
-            SlimProcessLogFilePath = new ConfigurablePath(baseKnownPath, $"{baseDirectoryName}/nexusmods.app.slim.current.log"),
-            SlimProcessArchiveFilePath = new ConfigurablePath(baseKnownPath, $"{baseDirectoryName}/nexusmods.app.slim.{{##}}.log"),
+            MainProcessLogFilePath = new ConfigurablePath(baseKnownPath, $"{baseDirectoryName}/MIST.app.main.current.log"),
+            MainProcessArchiveFilePath = new ConfigurablePath(baseKnownPath, $"{baseDirectoryName}/MIST.app.main.{{##}}.log"),
+            SlimProcessLogFilePath = new ConfigurablePath(baseKnownPath, $"{baseDirectoryName}/MIST.app.slim.current.log"),
+            SlimProcessArchiveFilePath = new ConfigurablePath(baseKnownPath, $"{baseDirectoryName}/MIST.app.slim.{{##}}.log"),
         };
     }
     
+
+    /// <summary>
+    /// Updates only the exact pre-M.I.S.T. log file defaults saved in older profiles.
+    /// Customized paths and existing log files are left untouched.
+    /// </summary>
+    public static LoggingSettings UpgradeLegacyPaths(LoggingSettings current, IOSInformation os)
+    {
+        var baseKnownPath = BaseKnownPath(os);
+        var baseDirectoryName = GetBaseDirectoryName(os);
+        var defaults = CreateDefault(os);
+
+        ConfigurablePath Legacy(string suffix) =>
+            new(baseKnownPath, $"{baseDirectoryName}/nexusmods.app.{suffix}");
+
+        return current with
+        {
+            MainProcessLogFilePath = current.MainProcessLogFilePath.Equals(Legacy("main.current.log"))
+                ? defaults.MainProcessLogFilePath : current.MainProcessLogFilePath,
+            MainProcessArchiveFilePath = current.MainProcessArchiveFilePath.Equals(Legacy("main.{##}.log"))
+                ? defaults.MainProcessArchiveFilePath : current.MainProcessArchiveFilePath,
+            SlimProcessLogFilePath = current.SlimProcessLogFilePath.Equals(Legacy("slim.current.log"))
+                ? defaults.SlimProcessLogFilePath : current.SlimProcessLogFilePath,
+            SlimProcessArchiveFilePath = current.SlimProcessArchiveFilePath.Equals(Legacy("slim.{##}.log"))
+                ? defaults.SlimProcessArchiveFilePath : current.SlimProcessArchiveFilePath,
+        };
+    }
+
     // NOTE: OSX ".App" is apparently special, using _ instead of . to prevent weirdness
     private static string GetBaseDirectoryName(IOSInformation os) => os.IsOSX ? "NexusMods_App/Logs" : "ModIntegrationAndSortingTechnology/Logs";
 

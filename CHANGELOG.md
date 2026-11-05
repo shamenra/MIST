@@ -19,6 +19,24 @@ The historical Nexus Mods App changelog is preserved [separately](docs/upstream/
 - Verify standalone AppImage OAuth/desktop integration on additional Linux environments.
 - Improve original-game version coverage and tested game support.
 
+## v0.6.0-dev.2 — 2026-11-05
+
+### Added
+- Consistent Steam-cached game artwork: portrait covers on My Games, and automatically resolved icon/logo-plus-background artwork in the main game spine and Downloads sidebar, with bundled fallbacks.
+- Dedicated M.I.S.T. GitHub-facing README, documentation and independently maintained release/bugfix notes.
+- New planned roadmap items: manual game installation entry and recognition of existing Nexus-downloaded mods (research only; **not implemented**).
+- Linux GOG discovery research status and community-reporting guidance; detection/deployment is **not locally verified**.
+
+### Fixed
+- Settings Save-button accent color and inherited Nexus-specific storage-location help destination.
+- My Games **View roadmap** navigation now targets the M.I.S.T. GitHub roadmap rather than upstream Trello.
+- Downloads sidebar artwork binding and associated asynchronous loader compilation fix.
+
+### Release
+- Independent `v0.6.0-dev.2` product/version metadata and new tag-triggered Linux AppImage workflow.
+- Details: [Release notes](docs/RELEASE-NOTES-v0.6.0-dev.2.md) · [Fix log](docs/MIST-BUGFIX-LOG.md) · [Release assets](https://github.com/shamenra/MIST/releases/tag/v0.6.0-dev.2).
+- **Preview:** do not assume that manually adding games or importing existing mods is available yet.
+
 ## v0.6.0-dev.1 — 2026-11-05
 
 - Corrected Linux AppImage desktop metadata and icon packaging so PupNet can produce a runnable M.I.S.T. AppImage.

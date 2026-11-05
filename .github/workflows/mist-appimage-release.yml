@@ -3,7 +3,7 @@ name: M.I.S.T. AppImage prerelease
 on:
   push:
     tags:
-      - 'v0.6.0-dev.1'
+      - 'v0.6.0-dev.2'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ jobs:
     uses: ./.github/workflows/build-linux-pupnet.yaml
     with:
       AppVersion: '0.6.0'
-      Target: 'v0.6.0-dev.1'
+      Target: 'v0.6.0-dev.2'
       ProjectFile: src/NexusMods.App/NexusMods.App.csproj
       BuildAppImage: true
       BuildArchive: false
@@ -42,25 +42,30 @@ jobs:
             exit 1
           fi
           test -s "${files[0]}"
-          mv -- "${files[0]}" dist/MIST-0.6.0-dev.1-x86_64.AppImage
-          chmod +x dist/MIST-0.6.0-dev.1-x86_64.AppImage
-          file dist/MIST-0.6.0-dev.1-x86_64.AppImage
-          sha256sum dist/MIST-0.6.0-dev.1-x86_64.AppImage
+          mv -- "${files[0]}" dist/MIST-0.6.0-dev.2-x86_64.AppImage
+          chmod +x dist/MIST-0.6.0-dev.2-x86_64.AppImage
+          file dist/MIST-0.6.0-dev.2-x86_64.AppImage
+          sha256sum dist/MIST-0.6.0-dev.2-x86_64.AppImage
 
-      - name: Publish first M.I.S.T. prerelease
+      - name: Publish M.I.S.T. development preview
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.6.0-dev.1
-          name: M.I.S.T. v0.6.0-dev.1 — First Linux preview
+          tag_name: v0.6.0-dev.2
+          name: M.I.S.T. v0.6.0-dev.2 — Linux UI and documentation preview
           prerelease: true
           make_latest: false
           generate_release_notes: false
           body: |
-            First Linux preview of M.I.S.T. — Mod Integration and Sorting Technology.
+            M.I.S.T. v0.6.0-dev.2 — UI artwork and navigation update.
+            Steam artwork on game cards, spine and Downloads sidebar, with safe fallbacks.
+            M.I.S.T. roadmap navigation, cyan settings accents and independent help/docs.
+            Planned, NOT shipped: manual game support and existing Nexus mod recognition.
+            Linux GOG support remains research/validation pending.
+            See docs/RELEASE-NOTES-v0.6.0-dev.2.md and CHANGELOG.md.
             This is an independent GPL-3.0 fork of Nexus Mods App, not affiliated with Nexus Mods.
             Supports installed Steam build identification, game version mapping,
             installation-specific original-file verification, and receipt-based mod operations.
             Linux x86_64 AppImage only. Preview software: back up your game data.
             Source code and GPL license are available in this repository.
-          files: dist/MIST-0.6.0-dev.1-x86_64.AppImage
+          files: dist/MIST-0.6.0-dev.2-x86_64.AppImage
           fail_on_unmatched_files: true

@@ -57,7 +57,13 @@ public class Program
             // MIST-006-05A: old installations may have opted in to Nexus
             // tracking. The fork never honors that legacy preference.
             trackingSettings = settingsManager.Get<TrackingSettings>() with { EnableTracking = false };
-            loggingSettings = settingsManager.Get<LoggingSettings>();
+            // MIST-006-09: migrate only the inherited default filenames.
+            // This must run before AddLogging and before the UI opens the logs.
+            var previousLoggingSettings = settingsManager.Get<LoggingSettings>();
+            var revisedLoggingSettings = LoggingSettings.UpgradeLegacyPaths(previousLoggingSettings, OSInformation.Shared);
+            if (!Equals(previousLoggingSettings, revisedLoggingSettings))
+                settingsManager.Update<LoggingSettings>(_ => revisedLoggingSettings);
+            loggingSettings = revisedLoggingSettings;
             experimentalSettings = settingsManager.Get<ExperimentalSettings>();
             gameLocatorSettings = settingsManager.Get<GameLocatorSettings>();
         }
@@ -344,7 +350,7 @@ public class Program
         var config = new NLog.Config.LoggingConfiguration();
 
         const string defaultLayout = "${processtime} [${level:uppercase=true}] (${logger}) ${message:withexception=true}";
-        const string defaultHeader = "############ Nexus Mods App log file - ${longdate} ############";
+        const string defaultHeader = "############ M.I.S.T. log file - ${longdate} ############";
 
         FileTarget fileTarget;
         if (startupMode.RunAsMain)

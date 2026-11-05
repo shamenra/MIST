@@ -95,9 +95,30 @@ public class GameWidgetViewModel : AViewModel<IGameWidgetViewModel>, IGameWidget
     {
         if (source is null) return null;
 
+        // MIST-006-07A: Prefer the game's *locally cached* Steam library art.
+        // App ID comes from the matching installation's Steam appmanifest;
+        // never guess based on game title or use another installation's ID.
+        if (source.LocatorResult.Store == GameStore.Steam &&
+            MISTSteamBuildIdentityReader.TryReadForGameFolder(
+                source.LocatorResult.Path.ToString(), out var identity) &&
+            MISTSteamArtworkResolver.TryFindCoverArt(identity!.AppId, out var artworkPath))
+        {
+            try
+            {
+                await using var cachedArt = File.OpenRead(artworkPath);
+                return Bitmap.DecodeToWidth(cachedArt, (int) ImageSizes.GameTile.Width);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Cannot decode cached Steam cover art for {GameName}; using bundled tile",
+                    source.Game.DisplayName);
+            }
+        }
+
         try
         {
-            var stream = await source.Game.TileImage.GetStreamAsync();
+            await using var stream = await source.Game.TileImage.GetStreamAsync();
             return Bitmap.DecodeToWidth(stream, (int) ImageSizes.GameTile.Width);
         }
         catch (Exception ex)

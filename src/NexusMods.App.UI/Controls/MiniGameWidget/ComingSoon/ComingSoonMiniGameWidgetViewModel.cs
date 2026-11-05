@@ -10,7 +10,7 @@ namespace NexusMods.App.UI.Controls.MiniGameWidget.ComingSoon;
 public class ComingSoonMiniGameWidgetViewModel : AViewModel<IComingSoonMiniGameWidgetViewModel>, IComingSoonMiniGameWidgetViewModel
 {
     private readonly ILogger<ComingSoonMiniGameWidgetViewModel> _logger;
-    private static readonly Uri ViewRoadmapUri = new("https://trello.com/b/gPzMuIr3/nexus-mods-app-roadmap");
+    private static readonly Uri ViewRoadmapUri = new("https://github.com/shamenra/MIST/blob/mist/development/docs/ROADMAP.md");
 
     public ComingSoonMiniGameWidgetViewModel(ILogger<ComingSoonMiniGameWidgetViewModel> logger, 
         IOSInterop osInterop,

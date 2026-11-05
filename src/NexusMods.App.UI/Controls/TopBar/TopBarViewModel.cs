@@ -98,22 +98,9 @@ public class TopBarViewModel : AViewModel<ITopBarViewModel>, ITopBarViewModel
             }
         );
 
-        ViewChangelogCommand = ReactiveCommand.Create<NavigationInformation>(info =>
-            {
-                var page = new PageData
-                {
-                    Context = new ChangelogPageContext
-                    {
-                        TargetVersion = null,
-                    },
-                    FactoryId = ChangelogPageFactory.StaticId,
-                };
-
-                var behavior = workspaceController.GetOpenPageBehavior(page, info);
-                workspaceController.OpenPage(workspaceController.ActiveWorkspace.Id, page, behavior);
-
-                Tracking.AddEvent(Events.Help.ViewChangelog, metadata: new EventMetadata(name: null));
-            }
+        // Open the maintained M.I.S.T. changelog, not the inherited Nexus Mods App changelog.
+        ViewChangelogCommand = ReactiveCommand.Create<NavigationInformation>(
+            _ => osInterop.OpenUri(ConstantLinks.ChangelogUri)
         );
 
         ViewAppLogsCommand = ReactiveCommand.Create(() =>
