@@ -1,6 +1,6 @@
 <svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
 <g clip-path="url(#clip0_4074_1250)">
-<circle cx="99.9999" cy="100" r="64.2857" fill="#FF8F28"/>
+<circle cx="99.9999" cy="100" r="64.2857" fill="#00BDDE"/>
 <g filter="url(#filter0_d_4074_1250)">
 <path fill-rule="evenodd" clip-rule="evenodd" d="M75.5625 109.87L153.188 32.1429L182.143 61.1364L75.5625 167.857L17.8572 110.076L46.8125 81.0823L75.5625 109.87Z" fill="url(#paint0_radial_4074_1250)"/>
 </g>

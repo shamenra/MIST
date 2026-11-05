@@ -1,3 +1,4 @@
+using NexusMods.App.UI.Controls.DevelopmentBuildBanner;
 using Avalonia.ReactiveUI;
 using R3;
 using ReactiveUI;
@@ -10,10 +11,10 @@ public partial class WelcomeOverlayView : ReactiveUserControl<IWelcomeOverlayVie
     {
         InitializeComponent();
 
+        MISTBuildDetails.Text = MISTBuildInfo.Details;
+
         this.WhenActivated(disposables =>
         {
-            this.BindCommand(ViewModel, vm => vm.CommandOpenDiscord, view => view.ButtonOpenDiscord)
-                .AddTo(disposables);
 
             this.BindCommand(ViewModel, vm => vm.CommandOpenForum, view => view.ButtonOpenForum)
                 .AddTo(disposables);
@@ -28,12 +29,6 @@ public partial class WelcomeOverlayView : ReactiveUserControl<IWelcomeOverlayVie
                 .AddTo(disposables);
 
             this.BindCommand(ViewModel, vm => vm.CommandClose, view => view.ButtonClose)
-                .AddTo(disposables);
-
-            this.BindCommand(ViewModel, vm => vm.CommandOpenPrivacyPolicy, view => view.ButtonOpenPrivacyPolicy)
-                .AddTo(disposables);
-
-            this.Bind(ViewModel, vm => vm.AllowTelemetry.Value, view => view.CheckBoxAllowTelemetry.IsChecked)
                 .AddTo(disposables);
 
             this.WhenAnyValue(view => view.ViewModel!.IsLoggedIn.Value)

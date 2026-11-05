@@ -23,7 +23,7 @@
         <MenuFlyout x:Key="CollectionMenuFlyout">
             <MenuItem x:Name="MenuItemViewOnNexusMods">
                 <MenuItem.Icon>
-                    <icons:UnifiedIcon Value="{x:Static icons:IconValues.NexusColor}" />
+                    <icons:UnifiedIcon Value="{x:Static icons:IconValues.OpenInNew}" />
                 </MenuItem.Icon>
                 <MenuItem.Header>
                     <TextBlock Text="{x:Static resources:Language.CollectionDownloadView_Menu_ViewOnNexusMods}" />
@@ -149,7 +149,7 @@
                                                 Orientation="Horizontal"
                                                 Spacing="4">
                                         <icons:UnifiedIcon Size="20"
-                                                           Value="{x:Static icons:IconValues.NexusColor}" />
+                                                           Value="{x:Static icons:IconValues.OpenInNew}" />
                                         <TextBlock Text="Nexus Mods"
                                                    Theme="{StaticResource BodySMNormalTheme}"
                                                    Foreground="{StaticResource PrimaryStrongBrush}"

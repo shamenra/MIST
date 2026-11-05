@@ -54,7 +54,9 @@ public class Program
         using (var settingsHost = BuildSettingsHost())
         {
             var settingsManager = settingsHost.Services.GetRequiredService<ISettingsManager>();
-            trackingSettings = settingsManager.Get<TrackingSettings>();
+            // MIST-006-05A: old installations may have opted in to Nexus
+            // tracking. The fork never honors that legacy preference.
+            trackingSettings = settingsManager.Get<TrackingSettings>() with { EnableTracking = false };
             loggingSettings = settingsManager.Get<LoggingSettings>();
             experimentalSettings = settingsManager.Get<ExperimentalSettings>();
             gameLocatorSettings = settingsManager.Get<GameLocatorSettings>();
@@ -72,12 +74,7 @@ public class Program
         var services = host.Services;
         _logger = services.GetRequiredService<ILogger<Program>>();
 
-        if (trackingSettings.EnableTracking)
-        {
-            Tracker.SetTracker(services.GetService<IEventTracker>());
-            Tracker.SetTracker(services.GetService<IExceptionTracker>());
-            Events.AppLaunched();
-        }
+        // MIST-006-05A: no event or exception tracking client is attached.
 
         // NOTE(erri120): has to come before host startup
         CleanupUnresponsiveProcesses(services).Wait(timeout: TimeSpan.FromSeconds(10));

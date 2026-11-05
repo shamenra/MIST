@@ -75,10 +75,9 @@ public static class Services
                 .AddDefaultRenderers()
                 .AddDefaultParsers()
 
-                .AddSingleton<ITelemetryProvider, TelemetryProvider>()
-                .AddTelemetry(trackingSettings)
-                .AddTrackingOld(trackingSettings)
-                .AddTracking(trackingSettings)
+                // MIST-006-05A: no Nexus-directed telemetry exporters or
+                // tracking hosted services are registered. Keep Nexus login,
+                // download services and local diagnostic logging independent.
 
                 .AddSingleton<CommandLineConfigurator>()
                 .AddCLI()
@@ -141,6 +140,7 @@ public static class Services
         Games.StardewValley.Services.AddStardewValley(services);
         Games.Larian.BaldursGate3.Services.AddBaldursGate3(services);
         Games.CreationEngine.Services.AddCreationEngine(services);
+        Games.OblivionRemastered.Services.AddOblivionRemastered(services);
         Games.MountAndBlade2Bannerlord.Services.AddMountAndBlade2Bannerlord(services);
         return services;
     }

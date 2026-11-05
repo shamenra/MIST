@@ -1,4 +1,4 @@
-﻿<reactiveUi:ReactiveUserControl
+<reactiveUi:ReactiveUserControl
     d:DesignWidth="1024"
     mc:Ignorable="d"
     x:Class="NexusMods.App.UI.Controls.TopBar.TopBarView"
@@ -13,6 +13,7 @@
     xmlns:resources="clr-namespace:NexusMods.App.UI.Resources"
     xmlns:navigation="clr-namespace:NexusMods.App.UI.Controls.Navigation"
     xmlns:controls="clr-namespace:NexusMods.App.UI.Controls"
+    xmlns:mist="clr-namespace:NexusMods.App.UI"
     xmlns:workspaceSystem="clr-namespace:NexusMods.App.UI.WorkspaceSystem">
 
     <Design.DataContext>
@@ -145,21 +146,9 @@
                                     <icons:UnifiedIcon Value="{x:Static icons:IconValues.FileDocumentOutline}" />
                                 </MenuItem.Icon>
                             </MenuItem>
-                            <MenuItem Header="{x:Static resources:Language.OpenStatusPageMenuItem_Header}"
-                                      x:Name="OpenStatusPageMenuItem">
-                                <MenuItem.Icon>
-                                    <icons:UnifiedIcon Value="{x:Static icons:IconValues.Broadcast}" />
-                                </MenuItem.Icon>
-                            </MenuItem>
                             <MenuItem Header="-" />
-                            <MenuItem Header="{x:Static resources:Language.OpenDiscordMenuItem_Header}"
-                                      x:Name="OpenDiscordMenuItem">
-                                <MenuItem.Icon>
-                                    <icons:UnifiedIcon Value="{x:Static icons:IconValues.Discord}" />
-                                </MenuItem.Icon>
-                            </MenuItem>
                             <MenuItem Header="{x:Static resources:Language.OpenGitHubMenuItem_Header}"
-                                      x:Name="OpenGitHubMenuItem">
+                                      x:Name="OpenGitHubMenuItem" IsVisible="{x:Static mist:ConstantLinks.HasForkGitHub}">
                                 <MenuItem.Icon>
                                     <icons:UnifiedIcon Value="{x:Static icons:IconValues.GitHub}" />
                                 </MenuItem.Icon>

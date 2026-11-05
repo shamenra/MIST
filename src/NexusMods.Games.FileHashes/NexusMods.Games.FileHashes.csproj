@@ -7,6 +7,7 @@
       <PackageReference Include="NexusMods.MnemonicDB.SourceGenerator" />
       <PackageReference Include="NexusMods.Paths" />
       <PackageReference Include="YamlDotNet" />
+      <PackageReference Include="SteamKit2" />
     </ItemGroup>
 
     <ItemGroup>

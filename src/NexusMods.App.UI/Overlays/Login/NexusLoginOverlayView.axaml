@@ -1,4 +1,4 @@
-﻿<reactiveUi:ReactiveUserControl
+<reactiveUi:ReactiveUserControl
     d:DesignHeight="335"
     d:DesignWidth="600"
     mc:Ignorable="d"
@@ -29,13 +29,9 @@
             Orientation="Vertical"
             Width="552">
             <Grid ColumnDefinitions="*, Auto">
-                <Svg
-                    Grid.Column="0"
-                    Height="37"
-                    HorizontalAlignment="Left"
-                    Path="avares://NexusMods.App.UI/Assets/nexus-logo-with-text.svg"
-                    VerticalAlignment="Center"
-                    Width="157" />
+                <TextBlock Grid.Column="0" Text="Connect to Nexus Mods"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource NeutralStrongBrush}" />
                 <controls:StandardButton x:Name="CancelButton" 
                                          Grid.Column="1"
                                          HorizontalAlignment="Right"

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.IO.Hashing;
 using System.Text.Json;
 using DynamicData.Kernel;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +14,8 @@ using NexusMods.Sdk.Settings;
 using NexusMods.Abstractions.Steam.Values;
 using NexusMods.Games.FileHashes.DTOs;
 using NexusMods.Hashing.xxHash3;
+using NexusMods.Hashing.xxHash3.Paths;
+using NexusMods.Sdk.Hashes;
 using NexusMods.MnemonicDB.Abstractions;
 using NexusMods.MnemonicDB.Storage;
 using NexusMods.MnemonicDB.Storage.RocksDbBackend;
@@ -134,9 +137,225 @@ internal sealed class FileHashesService : IFileHashesService, IDisposable, IHost
 
     private List<VersionDefinition.ReadOnly> GetVersionDefinitions(NexusModsGameId nexusModsGameId)
     {
-        return VersionDefinition.All(Current)
+        // MIST-006-04D.2: Historical versions remain available across
+        // retained read-only game-hash snapshots.
+        return HistoricalDatabases()
+            .SelectMany(database => VersionDefinition.All(database.Db))
             .Where(v => v.GameId == nexusModsGameId)
+            .DistinctBy(v => (v.Name, string.Join(",", v.SteamManifests
+                .Select(manifest => manifest.ManifestId.Value).OrderBy(id => id))))
             .ToList();
+    }
+
+    /// <summary>
+    /// Yield the active database followed by retained historical snapshots.
+    /// These databases are read-only. One broken historical snapshot does not
+    /// prevent M.I.S.T. from recognizing games using the remaining snapshots.
+    /// </summary>
+    private IEnumerable<ConnectedDb> HistoricalDatabases()
+    {
+        HashSet<AbsolutePath> visited = [];
+        if (_currentDb is not null && visited.Add(_currentDb.DatabaseInfo.Path))
+            yield return _currentDb;
+
+        foreach (var info in ExistingDBs())
+        {
+            if (!visited.Add(info.Path)) continue;
+
+            ConnectedDb database;
+            try
+            {
+                database = OpenDb(info);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception,
+                    "Skipping unreadable historical hash database at {Path}", info.Path);
+                continue;
+            }
+
+            yield return database;
+        }
+    }
+
+    private sealed record SteamSnapshotMatch(
+        ConnectedDb Database,
+        string Fingerprint,
+        bool HasVersion,
+        VersionDefinition.ReadOnly Definition)
+    {
+        public string? VersionName => HasVersion ? Definition.Name : null;
+    }
+
+    /// <summary>
+    /// Select one consistent original-file baseline and, when available,
+    /// a unique public version definition. Do not mix file records across
+    /// different snapshots or trust a matching depot in isolation.
+    /// </summary>
+    private bool TryResolveSteamSnapshot(
+        IEnumerable<LocatorId> locatorIds, out SteamSnapshotMatch? selected)
+    {
+        selected = null;
+        var installed = new HashSet<ulong>();
+        foreach (var locatorId in locatorIds)
+        {
+            if (!ulong.TryParse(locatorId.Value, out var id) || id == 0)
+                return false;
+            installed.Add(id);
+        }
+
+        if (installed.Count == 0) return false;
+
+        var candidates = new List<SteamSnapshotMatch>();
+        foreach (var database in HistoricalDatabases())
+        {
+            var manifests = new List<SteamManifest.ReadOnly>();
+            foreach (var id in installed)
+            {
+                var records = SteamManifest.FindByManifestId(
+                    database.Db, ManifestId.From(id)).Take(2).ToArray();
+                if (records.Length != 1 || !records[0].Files.Any())
+                {
+                    manifests.Clear();
+                    break;
+                }
+                manifests.Add(records[0]);
+            }
+
+            if (manifests.Count != installed.Count ||
+                manifests.Select(m => m.AppId.Value).Distinct().Skip(1).Any())
+                continue;
+
+            // Include every original file's identity in the fingerprint.
+            // Equal manifest IDs with contradictory file records are NOT
+            // interchangeable baselines.
+            var rows = manifests.SelectMany(m => m.Files.Select(f =>
+                    $"{m.AppId.Value}|{m.ManifestId.Value}|{f.Path}|{f.Hash.Size}|{f.Hash.XxHash3}"))
+                .OrderBy(line => line, StringComparer.Ordinal);
+            var fingerprint = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(string.Join("\n", rows))));
+
+            var matchingVersions = VersionDefinition.All(database.Db)
+                .Where(definition => installed.SetEquals(
+                    definition.SteamManifests.Select(m => m.ManifestId.Value)))
+                .Take(2)
+                .ToArray();
+            if (matchingVersions.Length > 1)
+            {
+                _logger.LogWarning(
+                    "Ambiguous historical version definitions for Steam manifests {Manifests}",
+                    string.Join(",", installed.OrderBy(x => x)));
+                return false;
+            }
+
+            candidates.Add(new SteamSnapshotMatch(
+                database, fingerprint, matchingVersions.Length == 1,
+                matchingVersions.Length == 1
+                    ? matchingVersions[0] : default(VersionDefinition.ReadOnly)));
+        }
+
+        if (!MISTSteamHistoricalSnapshotSelector.TrySelect(
+                candidates.Select(c => (c.Fingerprint, c.VersionName)).ToArray(),
+                out var selectedIndex, out _))
+        {
+            return false;
+        }
+
+        selected = candidates[selectedIndex];
+        return true;
+    }
+
+    /// <inheritdoc />
+    public Task MISTCaptureInstalledSteamManifestsAsync(
+        string gameFolder, CancellationToken cancellationToken = default)
+    {
+        // Steam depot metadata may be large; never block the UI thread or
+        // touch any deployed game file. Only the separate app-side catalog
+        // is written. Automatic capture is not automatic compatibility.
+        return Task.Run(() =>
+        {
+            try
+            {
+                var appData = Path.GetDirectoryName(_hashDatabaseLocation.ToString());
+                if (string.IsNullOrWhiteSpace(appData)) return;
+                var catalogRoot = Path.Combine(appData, "MISTSteamManifestCatalog");
+                var capture = MISTSteamDepotManifestImporter.Capture(
+                    gameFolder, catalogRoot, cancellationToken);
+                if (capture is null) return;
+                _logger.LogInformation(
+                    "MIST-006-04D3: App={AppId} Build={BuildId} Depots={Depots} Missing={Missing} Complete={Complete}",
+                    capture.AppId, capture.BuildId, capture.Depots.Count,
+                    capture.MissingDepots.Count, capture.Complete);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception,
+                    "MIST-006-04D3: Could not capture local Steam depot metadata for {GamePath}", gameFolder);
+            }
+        }, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<Optional<GameFileRecord>> MISTFindVerifiedOriginalSteamFileAsync(
+        GameInstallation installation, GamePath path,
+        CancellationToken cancellationToken = default)
+    {
+        // This is an explicit, read-only per-file query, not a startup scan,
+        // loadout reset baseline or filesystem mutation permission.
+        if (installation.LocatorResult.Store != GameStore.Steam ||
+            path.LocationId != LocationId.Game)
+            return Optional<GameFileRecord>.None;
+
+        var gameFolder = installation.Locations[LocationId.Game].Path.ToString();
+        var appData = Path.GetDirectoryName(_hashDatabaseLocation.ToString());
+        if (string.IsNullOrEmpty(appData))
+            return Optional<GameFileRecord>.None;
+
+        var catalogRoot = Path.Combine(appData, "MISTSteamManifestCatalog");
+        if (!MISTSteamVerifiedOriginalCatalog.TryLoadComplete(
+                gameFolder, catalogRoot, out var identity, out var catalog))
+            return Optional<GameFileRecord>.None;
+
+        var expected = await MISTSteamVerifiedOriginalCatalog.VerifyInstalledFileAsync(
+            gameFolder, catalog!, identity!, path.Path.ToString(), cancellationToken);
+        if (expected is null) return Optional<GameFileRecord>.None;
+
+        // Steam provides SHA-1, whereas existing Nexus consumers expect
+        // xxHash3 (both full and minimal). Calculate those only AFTER SHA-1
+        // confirms installed bytes match the Steam manifest entry.
+        // This intentionally does not install these records as a global
+        // original-file baseline: the global API lacks installation identity.
+        var absolute = installation.Locations.ToAbsolutePath(path);
+        try
+        {
+            var beforeSize = new FileInfo(absolute.ToString()).Length;
+            var beforeWrite = absolute.FileInfo.LastWriteTimeUtc;
+            if (beforeSize != expected.Size)
+                return Optional<GameFileRecord>.None;
+
+            var fullHash = await absolute.XxHash3Async(token: cancellationToken);
+            await using var stream = absolute.Read();
+            var minimalHash = await MinimalHash.HashAsync<Hash, XxHash3, Xx3Hasher>(
+                stream, cancellationToken: cancellationToken);
+
+            // If another process modified the file during the second/third
+            // hash pass, reject the evidence rather than caching stale data.
+            if (new FileInfo(absolute.ToString()).Length != beforeSize ||
+                absolute.FileInfo.LastWriteTimeUtc != beforeWrite)
+                return Optional<GameFileRecord>.None;
+
+            return new GameFileRecord
+            {
+                Path = path,
+                Size = absolute.FileInfo.Size,
+                MinimalHash = minimalHash,
+                Hash = fullHash,
+            };
+        }
+        catch (IOException) { return Optional<GameFileRecord>.None; }
+        catch (UnauthorizedAccessException) { return Optional<GameFileRecord>.None; }
     }
 
     private bool ShouldCheckForUpdate()
@@ -382,17 +601,19 @@ internal sealed class FileHashesService : IFileHashesService, IDisposable, IHost
         }
         else if (gameStore == GameStore.Steam)
         {
-            foreach (var id in locatorIds)
+            // All original-file records must come from the SAME consistent
+            // snapshot selected for this exact installed depot manifest set.
+            if (!TryResolveSteamSnapshot(locatorIds, out var snapshot))
+                yield break;
+
+            foreach (var id in locatorIds.Distinct())
             {
-                if (!ulong.TryParse(id.Value, out var parsedId))
-                    continue;
-                
-                var manifestId = ManifestId.From(parsedId);
+                if (!ulong.TryParse(id.Value, out var parsedId)) continue;
+                var records = SteamManifest.FindByManifestId(
+                    snapshot!.Database.Db, ManifestId.From(parsedId)).Take(2).ToArray();
+                if (records.Length != 1) continue;
 
-                if (!SteamManifest.FindByManifestId(Current, manifestId).TryGetFirst(out var firstManifest))
-                    continue;
-
-                foreach (var file in firstManifest.Files)
+                foreach (var file in records[0].Files)
                 {
                     yield return new GameFileRecord
                     {
@@ -440,9 +661,37 @@ internal sealed class FileHashesService : IFileHashesService, IDisposable, IHost
     /// <inheritdoc />
     public bool TryGetVanityVersion(LocatorIdsWithGameStore locatorIdsWithGameStore, out VanityVersion version)
     {
+        var (gameStore, locatorIds) = locatorIdsWithGameStore;
+
+        // The immutable M.I.S.T. aliases are curated evidence, not a guess
+        // based on a Steam build ID. Exact depot-manifest equality is required.
+        // Both UI version labels and loadout creation use this service.
+        string? curatedVersion = null;
+        var hasCuratedVersion = gameStore == GameStore.Steam &&
+            MISTSteamPublicVersionCatalog.TryResolve(
+                locatorIds.Select(x => x.Value), out curatedVersion);
+
         if (TryGetGameVersionDefinition(locatorIdsWithGameStore, out var versionDefinition))
         {
+            // A conflicting alias is an error in our data; don't silently
+            // tell compatibility checks that one of the labels is correct.
+            if (hasCuratedVersion && !string.Equals(
+                    curatedVersion, versionDefinition.Name, StringComparison.Ordinal))
+            {
+                _logger.LogWarning(
+                    "Conflicting public versions for Steam manifests: historical={Historical}, curated={Curated}",
+                    versionDefinition.Name, curatedVersion);
+                version = VanityVersion.DefaultValue;
+                return false;
+            }
+
             version = VanityVersion.From(versionDefinition.Name);
+            return true;
+        }
+
+        if (hasCuratedVersion)
+        {
+            version = VanityVersion.From(curatedVersion!);
             return true;
         }
 
@@ -498,42 +747,14 @@ internal sealed class FileHashesService : IFileHashesService, IDisposable, IHost
         }
         else if (gameStore == GameStore.Steam)
         {
-            List<SteamManifest.ReadOnly> steamManifests = [];
-            
-            foreach (var steamId in locatorIds)
+            if (!TryResolveSteamSnapshot(locatorIds, out var snapshot) ||
+                !snapshot!.HasVersion)
             {
-                if (!ulong.TryParse(steamId.Value, out var parsedId))
-                {
-                    _logger.LogDebug("Steam locator {Raw} metadata is not a valid ulong", steamId);
-                    return false;
-                }
-
-                var hasManifest = SteamManifest.FindByManifestId(Current, ManifestId.From(parsedId)).TryGetFirst(out var steamManifest);
-                if (hasManifest) steamManifests.Add(steamManifest);
-            }
-
-            if (steamManifests.Count == 0)
-            {
-                _logger.LogDebug("No Steam manifests found for locator metadata");
+                _logger.LogDebug("No unique complete Steam version in retained hash databases");
                 return false;
             }
-            
-            var wasFound = VersionDefinition.All(_currentDb!.Db)
-                .Select(version =>
-                {
-                    var matchingIdCount = steamManifests.Count(g => version.SteamManifestsIds.Contains(g));
-                    return (matchingIdCount, version);
-                })
-                .Where(row => row.matchingIdCount > 0)
-                .OrderByDescending(row => row.matchingIdCount)
-                .Select(t => t.version)
-                .TryGetFirst(out versionDefinition);
 
-            if (!wasFound)
-            {
-                _logger.LogDebug("No version found for locator metadata");
-                return false;
-            }
+            versionDefinition = snapshot.Definition;
         }
         else if (gameStore == GameStore.EGS)
         {
@@ -571,14 +792,29 @@ internal sealed class FileHashesService : IFileHashesService, IDisposable, IHost
     /// <inheritdoc />
     public bool TryGetLocatorIdsForVanityVersion(GameStore gameStore, VanityVersion version, out LocatorId[] commonIds)
     {
-        if (!VersionDefinition.FindByName(Current, version.Value).TryGetFirst(out var versionDef))
+        // A public version may live in a retained historical snapshot.
+        // Reject incompatible identically named definitions instead of
+        // selecting one arbitrarily from a different game.
+        LocatorId[]? matched = null;
+        foreach (var database in HistoricalDatabases())
         {
-            commonIds = [];
-            return false;
+            foreach (var definition in VersionDefinition.FindByName(database.Db, version.Value))
+            {
+                var ids = GetLocatorIdsForVersionDefinition(gameStore, definition);
+                if (ids.Length == 0) continue;
+                if (matched is not null &&
+                    !matched.Select(x => x.Value).OrderBy(x => x)
+                        .SequenceEqual(ids.Select(x => x.Value).OrderBy(x => x)))
+                {
+                    commonIds = [];
+                    return false;
+                }
+                matched = ids;
+            }
         }
 
-        commonIds = GetLocatorIdsForVersionDefinition(gameStore, versionDef);
-        return true;
+        commonIds = matched ?? [];
+        return matched is not null;
     }
 
     public LocatorId[] GetLocatorIdsForVersionDefinition(GameStore gameStore, VersionDefinition.ReadOnly versionDefinition)
@@ -637,11 +873,9 @@ internal sealed class FileHashesService : IFileHashesService, IDisposable, IHost
     {
         var existingDatabases = ExistingDBs().ToArray();
 
-        // Cleanup old databases
-        foreach (var databaseInfo in existingDatabases.Skip(1))
-        {
-            databaseInfo.Path.DeleteDirectory(true);
-        }
+        // MIST-006-04D.2: Retain historical hash snapshots. Users can
+        // maintain older game builds and their associated loadouts.
+        // Never remove previous snapshots automatically at startup.
 
         var forceUpdate = false;
         try

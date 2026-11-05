@@ -147,7 +147,7 @@
                                         <MenuItem x:Name="GetModsFromNexusButton"
                                                   Header="{x:Static resources:Language.FileOriginsPage_FromNexusMods}">
                                             <MenuItem.Icon>
-                                                <icons:UnifiedIcon Value="{x:Static icons:IconValues.NexusColor}" />
+                                                <icons:UnifiedIcon Value="{x:Static icons:IconValues.OpenInNew}" />
                                             </MenuItem.Icon>
                                         </MenuItem>
                                     </MenuFlyout>
@@ -179,7 +179,7 @@
                                 <controls:StandardButton x:Name="EmptyLibraryLinkButton"
                                                          Text="Open Nexus Mods"
                                                          ShowIcon="Left"
-                                                         LeftIcon="{x:Static icons:IconValues.Nexus}"
+                                                         LeftIcon="{x:Static icons:IconValues.OpenInNew}"
                                                          HorizontalAlignment="Center" />
                             </StackPanel>
                         </controls:EmptyState.Subtitle>
@@ -224,7 +224,7 @@
                                 Size="Toolbar"
                                 Fill="None"
                                 ShowIcon="Left"
-                                LeftIcon="{x:Static icons:IconValues.NexusColor}"/>
+                                LeftIcon="{x:Static icons:IconValues.OpenInNew}"/>
                         </ItemsControl>
                     </controls:Toolbar>
 

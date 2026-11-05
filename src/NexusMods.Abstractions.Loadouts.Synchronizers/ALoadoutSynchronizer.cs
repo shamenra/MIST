@@ -110,64 +110,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         provider.GetRequiredService<IGarbageCollectorRunner>()
     ) { }
 
-    private void CleanDirectories(IEnumerable<GamePath> directoriesWithDeletions, DiskState newDiskState, GameInstallation installation)
-    {
-        var processedDirectories = new HashSet<GamePath>();
-        var directoriesToDelete = new HashSet<GamePath>();
-        var directoriesInUse = new HashSet<GamePath>();
-        
-        // Build set of directories that are in use (are ancestors of at least one file)
-        foreach (var fileEntry in newDiskState)
-        {
-            var path = (GamePath)fileEntry.Path;
-            var parent = path.Parent;
-            var rootComponent = parent.GetRootComponent;
-        
-            // Add all parent directories to the set
-            while (parent != rootComponent)
-            {
-                directoriesInUse.Add(parent);
-                parent = parent.Parent;
-            }
-        }
-        
-        // Find the highest directory not in use for each deletion 
-        foreach (var dirWithDeletion in directoriesWithDeletions)
-        {
-            var rootComponent = dirWithDeletion.GetRootComponent;
-            GamePath? highestEmptyDirectory = null;
-            
-            var currentParentDir = dirWithDeletion;
 
-            while (currentParentDir != rootComponent)
-            {
-                if (processedDirectories.Contains(currentParentDir))
-                {
-                    highestEmptyDirectory = null;
-                    break;
-                }
-                
-                // Check if directory contains files or is a parent of directories with files
-                if (directoriesInUse.Contains(currentParentDir))
-                {
-                    break;
-                }
-
-                processedDirectories.Add(currentParentDir);
-                highestEmptyDirectory = currentParentDir;
-                currentParentDir = currentParentDir.Parent;
-            }
-
-            if (highestEmptyDirectory != null)
-                directoriesToDelete.Add(highestEmptyDirectory.Value);
-        }
-
-        foreach (var dir in directoriesToDelete)
-        {
-            // Could have other empty directories as children, so we need to delete recursively
-            installation.Locations.ToAbsolutePath(dir).DeleteDirectory(recursive: true);
-        }
-    }
 
 #region ILoadoutSynchronizer Implementation
 
@@ -544,10 +487,10 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         loadout = loadout.Rebase();
         var newState = DiskStateEntry.FindByGame(loadout.Db, loadout.Installation);
 
-        // Clean up empty directories
+        // MIST-006-03E: Automatic directory deletion is prohibited.
         if (foldersWithDeletedFiles.Count > 0)
         {
-            CleanDirectories(foldersWithDeletedFiles, newState, loadout.InstallationInstance);
+            Logger.LogWarning("MIST-006-03D: Automatic directory cleanup disabled for safety.");
         }
 
         job?.SetStatus("Archive Cleanup");
@@ -820,10 +763,10 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
 
         var newMetadata = metadata.Rebase(result.Db);
 
-        // Clean up empty directories
+        // MIST-006-03E: Automatic directory deletion is prohibited.
         if (foldersWithDeletedFiles.Count > 0)
         {
-            CleanDirectories(foldersWithDeletedFiles, DiskStateEntry.FindByGame(newMetadata.Db, newMetadata), gameInstallation);
+            Logger.LogWarning("MIST-006-03D: Automatic directory cleanup disabled for safety.");
         }
     }
 

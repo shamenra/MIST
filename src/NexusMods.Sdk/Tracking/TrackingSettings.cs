@@ -16,19 +16,7 @@ public record TrackingSettings : ISettings
     {
         return settingsBuilder
             .ConfigureBackend(StorageBackendOptions.Use(StorageBackends.Json))
-            .ConfigureDefault(CreateDefault)
-            .ConfigureProperty(
-                x => x.EnableTracking,
-                new PropertyOptions<TrackingSettings, bool>
-                {
-                    Section = Sections.Privacy,
-                    DisplayName = "Send diagnostic and usage data",
-                    DescriptionFactory = _ => "Help us improve the app by sending diagnostic and usage data to Nexus Mods.",
-                    HelpLink = Link,
-                    RequiresRestart = true,
-                },
-                new BooleanContainerOptions()
-            );
+            .ConfigureDefault(CreateDefault);
     }
 
     private static TrackingSettings CreateDefault(IServiceProvider serviceProvider)

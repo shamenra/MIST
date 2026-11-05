@@ -226,13 +226,13 @@
 
     <!-- Primary/Strong -->
     <Thickness x:Key="ButtonPrimaryStrongBorderThickness">0</Thickness>
-    <StaticResource x:Key="ButtonPrimaryStrongBackground" ResourceKey="PrimaryModerateBrush" />
+    <SolidColorBrush x:Key="ButtonPrimaryStrongBackground" Color="#00D9FF" />
     <StaticResource x:Key="ButtonPrimaryStrongForeground" ResourceKey="NeutralInvertedBrush" />
     <StaticResource x:Key="ButtonPrimaryStrongBorderBrush" ResourceKey="StrokeTranslucentModerateBrush" />
-    <StaticResource x:Key="ButtonPrimaryStrongBackgroundPointerOver" ResourceKey="PrimaryStrongBrush" />
+    <SolidColorBrush x:Key="ButtonPrimaryStrongBackgroundPointerOver" Color="#5CEBFF" />
     <StaticResource x:Key="ButtonPrimaryStrongForegroundPointerOver" ResourceKey="NeutralInvertedBrush" />
     <StaticResource x:Key="ButtonPrimaryStrongBorderBrushPointerOver" ResourceKey="StrokeTranslucentModerateBrush" />
-    <StaticResource x:Key="ButtonPrimaryStrongBackgroundPressed" ResourceKey="PrimarySubduedBrush" />
+    <SolidColorBrush x:Key="ButtonPrimaryStrongBackgroundPressed" Color="#00A6C4" />
     <StaticResource x:Key="ButtonPrimaryStrongForegroundPressed" ResourceKey="NeutralInvertedBrush" />
     <StaticResource x:Key="ButtonPrimaryStrongBorderBrushPressed" ResourceKey="StrokeTranslucentModerateBrush" />
     <SolidColorBrush x:Key="ButtonPrimaryStrongBackgroundDisabled"
@@ -243,13 +243,13 @@
 
     <!-- Primary/Weak -->
     <Thickness x:Key="ButtonPrimaryWeakBorderThickness">0</Thickness>
-    <StaticResource x:Key="ButtonPrimaryWeakBackground" ResourceKey="InfoModerateBrush" />
+    <SolidColorBrush x:Key="ButtonPrimaryWeakBackground" Color="#E83DFF" />
     <StaticResource x:Key="ButtonPrimaryWeakForeground" ResourceKey="NeutralInvertedBrush" />
     <StaticResource x:Key="ButtonPrimaryWeakBorderBrush" ResourceKey="StrokeTranslucentModerateBrush" />
-    <StaticResource x:Key="ButtonPrimaryWeakBackgroundPointerOver" ResourceKey="InfoStrongBrush" />
+    <SolidColorBrush x:Key="ButtonPrimaryWeakBackgroundPointerOver" Color="#F07AFF" />
     <StaticResource x:Key="ButtonPrimaryWeakForegroundPointerOver" ResourceKey="NeutralInvertedBrush" />
     <StaticResource x:Key="ButtonPrimaryWeakBorderBrushPointerOver" ResourceKey="StrokeTranslucentModerateBrush" />
-    <StaticResource x:Key="ButtonPrimaryWeakBackgroundPressed" ResourceKey="InfoSubduedBrush" />
+    <SolidColorBrush x:Key="ButtonPrimaryWeakBackgroundPressed" Color="#AD2CC2" />
     <StaticResource x:Key="ButtonPrimaryWeakForegroundPressed" ResourceKey="NeutralInvertedBrush" />
     <StaticResource x:Key="ButtonPrimaryWeakBorderBrushPressed" ResourceKey="StrokeTranslucentModerateBrush" />
     <SolidColorBrush x:Key="ButtonPrimaryWeakBackgroundDisabled"
@@ -260,17 +260,17 @@
 
 
     <!-- Primary/StrongAlt -->
-    <StaticResource x:Key="ButtonPrimaryStrongAltForeground" ResourceKey="PrimaryModerateBrush" />
-    <StaticResource x:Key="ButtonPrimaryStrongAltForegroundPointerOver" ResourceKey="PrimaryStrongBrush" />
-    <StaticResource x:Key="ButtonPrimaryStrongAltForegroundPressed" ResourceKey="PrimaryModerateBrush" />
+    <SolidColorBrush x:Key="ButtonPrimaryStrongAltForeground" Color="#00D9FF" />
+    <SolidColorBrush x:Key="ButtonPrimaryStrongAltForegroundPointerOver" Color="#5CEBFF" />
+    <SolidColorBrush x:Key="ButtonPrimaryStrongAltForegroundPressed" Color="#00A6C4" />
     <SolidColorBrush x:Key="ButtonPrimaryStrongAltForegroundDisabled"
                      Color="{StaticResource PrimaryModerate}"
                      Opacity="{StaticResource OpacityDisabledElement}" />
 
     <!-- Primary/WeakAlt -->
-    <StaticResource x:Key="ButtonPrimaryWeakAltForeground" ResourceKey="InfoModerateBrush" />
-    <StaticResource x:Key="ButtonPrimaryWeakAltForegroundPointerOver" ResourceKey="InfoStrongBrush" />
-    <StaticResource x:Key="ButtonPrimaryWeakAltForegroundPressed" ResourceKey="InfoModerateBrush" />
+    <SolidColorBrush x:Key="ButtonPrimaryWeakAltForeground" Color="#E83DFF" />
+    <SolidColorBrush x:Key="ButtonPrimaryWeakAltForegroundPointerOver" Color="#F07AFF" />
+    <SolidColorBrush x:Key="ButtonPrimaryWeakAltForegroundPressed" Color="#AD2CC2" />
     <SolidColorBrush x:Key="ButtonPrimaryWeakAltForegroundDisabled"
                      Color="{StaticResource InfoModerate}"
                      Opacity="{StaticResource OpacityDisabledElement}" />

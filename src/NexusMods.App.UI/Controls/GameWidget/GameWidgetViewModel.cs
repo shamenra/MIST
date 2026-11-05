@@ -47,11 +47,24 @@ public class GameWidgetViewModel : AViewModel<IGameWidgetViewModel>, IGameWidget
                     .SelectMany(async installation =>
                     {
                         await fileHashesService.GetFileHashesDb();
+                        if (installation.LocatorResult.Store == GameStore.Steam)
+                        {
+                            // Capture locally cached depot metadata automatically.
+                            // This neither changes the game nor labels an unknown
+                            // Steam build as a publicly compatible game version.
+                            await fileHashesService.MISTCaptureInstalledSteamManifestsAsync(
+                                installation.LocatorResult.Path.ToString());
+                        }
                         var locatorIds = installation.LocatorResult.LocatorIds.ToArray();
-                        if (!fileHashesService.TryGetVanityVersion((installation.LocatorResult.Store, locatorIds), out var vanityVersion))
-                            return Language.GameWidget_VersionUnknown;
-                        return $"Version: {vanityVersion.Value}";
+                        if (fileHashesService.TryGetVanityVersion((installation.LocatorResult.Store, locatorIds), out var vanityVersion))
+                            return $"Game Version: {vanityVersion.Value}";
+
+                        // Public versions are not interchangeable with Steam
+                        // build IDs. Technical build metadata remains in the
+                        // manifest catalog until the game-info panel is added.
+                        return "Game Version: Unknown";
                     })
+                    .OnUI()
                     .BindToVM(this, vm => vm.Version)
                     .DisposeWith(disposables);
 

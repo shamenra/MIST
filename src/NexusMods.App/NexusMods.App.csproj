@@ -11,6 +11,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\NexusMods.Games.OblivionRemastered\NexusMods.Games.OblivionRemastered.csproj" />
         <ProjectReference Include="..\NexusMods.Abstractions.Games.FileHashes\NexusMods.Abstractions.Games.FileHashes.csproj" />
         <ProjectReference Include="..\NexusMods.Abstractions.Logging\NexusMods.Abstractions.Logging.csproj" />
         <ProjectReference Include="..\NexusMods.Backend\NexusMods.Backend.csproj" />

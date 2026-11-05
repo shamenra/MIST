@@ -1,0 +1,65 @@
+name: M.I.S.T. AppImage prerelease
+
+on:
+  push:
+    tags:
+      - 'v0.6.0-dev'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-appimage:
+    uses: ./.github/workflows/build-linux-pupnet.yaml
+    with:
+      AppVersion: '0.6.0'
+      Target: ${{ github.sha }}
+      ProjectFile: src/NexusMods.App/NexusMods.App.csproj
+      BuildAppImage: true
+      BuildArchive: false
+      RetentionDays: 7
+
+  release:
+    name: Publish one AppImage
+    needs: build-linux-appimage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-linux-appimage.outputs.ArtifactNameLinuxAppImage }}
+          path: dist
+
+      - name: Validate and name single binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*.AppImage)
+          if (( ${#files[@]} != 1 )); then
+            echo "Expected exactly one AppImage, found ${#files[@]}" >&2
+            exit 1
+          fi
+          test -s "${files[0]}"
+          mv -- "${files[0]}" dist/MIST-0.6.0-dev-x86_64.AppImage
+          chmod +x dist/MIST-0.6.0-dev-x86_64.AppImage
+          file dist/MIST-0.6.0-dev-x86_64.AppImage
+          sha256sum dist/MIST-0.6.0-dev-x86_64.AppImage
+
+      - name: Publish first M.I.S.T. prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.6.0-dev
+          name: M.I.S.T. v0.6.0-dev — First Linux preview
+          prerelease: true
+          make_latest: false
+          generate_release_notes: false
+          body: |
+            First Linux preview of M.I.S.T. — Mod Integration and Sorting Technology.
+            This is an independent GPL-3.0 fork of Nexus Mods App, not affiliated with Nexus Mods.
+            Supports installed Steam build identification, game version mapping,
+            installation-specific original-file verification, and receipt-based mod operations.
+            Linux x86_64 AppImage only. Preview software: back up your game data.
+            Source code and GPL license are available in this repository.
+          files: dist/MIST-0.6.0-dev-x86_64.AppImage
+          fail_on_unmatched_files: true

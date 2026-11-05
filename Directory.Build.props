@@ -65,4 +65,12 @@
     <ItemGroup>
         <PackageReference Include="JetBrains.Annotations" />
     </ItemGroup>
+    <!-- M.I.S.T. product version. Override at build time with -p:MISTProductVersion=x.y.z-preview.N -->
+    <PropertyGroup>
+        <MISTProductVersion Condition="'$(MISTProductVersion)' == ''">0.6.0-dev</MISTProductVersion>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(MSBuildProjectName)' == 'NexusMods.App' Or '$(MSBuildProjectName)' == 'NexusMods.App.UI'">
+        <Version>$(MISTProductVersion)</Version>
+    </PropertyGroup>
+
 </Project>

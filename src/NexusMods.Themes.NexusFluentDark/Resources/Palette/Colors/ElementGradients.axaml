@@ -10,8 +10,8 @@
     </LinearGradientBrush>
     
     <LinearGradientBrush x:Key="AppLinearGradientBrush" StartPoint="0%,50%" EndPoint="100%,50%">
-        <GradientStop Color="{StaticResource BrandPrimary400}" Offset="0" />
-        <GradientStop Color="{StaticResource BrandPrimary600}" Offset="1" />
+        <GradientStop Color="#00D9FF" Offset="0" />
+        <GradientStop Color="#E83DFF" Offset="1" />
     </LinearGradientBrush>
     
     <LinearGradientBrush x:Key="PremiumButtonLinearGradientBrush" StartPoint="0%,50%" EndPoint="100%,50%">

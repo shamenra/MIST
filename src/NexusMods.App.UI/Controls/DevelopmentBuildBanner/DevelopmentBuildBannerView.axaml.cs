@@ -1,4 +1,4 @@
-﻿using System.Reactive.Disposables;
+using System.Reactive.Disposables;
 using Avalonia;
 using Avalonia.ReactiveUI;
 using JetBrains.Annotations;
@@ -31,13 +31,6 @@ public partial class DevelopmentBuildBannerView : ReactiveUserControl<IDevelopme
     public DevelopmentBuildBannerView()
     {
         InitializeComponent();
-
-        this.WhenActivated(d =>
-            {
-                this.BindCommand(ViewModel, vm => vm.GiveFeedbackCommand, view => view.GiveFeedbackButton)
-                    .DisposeWith(d);
-            }
-        );
         
         var appName = "M.I.S.T. —";
 
@@ -47,6 +40,6 @@ public partial class DevelopmentBuildBannerView : ReactiveUserControl<IDevelopme
 
     private static string GetAppVersion()
     {
-        return MISTBuildInfo.Version;
+        return MISTBuildInfo.Footer;
     }
 }

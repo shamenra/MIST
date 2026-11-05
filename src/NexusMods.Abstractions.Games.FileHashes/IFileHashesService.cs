@@ -31,6 +31,28 @@ public interface IFileHashesService
     public Task CheckForUpdate(bool forceUpdate = false);
 
     /// <summary>
+    /// M.I.S.T.: On detection, collect AVAILABLE local Steam depot metadata
+    /// into an application-owned sidecar catalog. No file mutation authority,
+    /// public version mapping, or original-file verification is inferred.
+    /// Other store and test implementations may opt out.
+    /// </summary>
+    public Task MISTCaptureInstalledSteamManifestsAsync(
+        string gameFolder, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
+    /// M.I.S.T.: On-demand installation-aware original-file verification.
+    /// Converts a complete local Steam manifest catalog entry to a normal
+    /// GameFileRecord ONLY when the installed file matches Steam's SHA-1.
+    /// Unlike GetGameFiles(store, locatorIds), this cannot lose installation
+    /// identity. Never use this evidence to authorize a file deletion.
+    /// A missing/changed file yields None, not a presumed original.
+    /// </summary>
+    public ValueTask<Optional<GameFileRecord>> MISTFindVerifiedOriginalSteamFileAsync(
+        GameInstallation installation, GamePath path,
+        CancellationToken cancellationToken = default)
+        => ValueTask.FromResult(Optional<GameFileRecord>.None);
+
+    /// <summary>
     /// Gets all known vanity versions for a given game.
     /// </summary>
     public IEnumerable<VanityVersion> GetKnownVanityVersions(NexusModsGameId nexusModsGameId);

@@ -62,7 +62,7 @@
                             Orientation="Horizontal"
                             Spacing="4">
                     <icons:UnifiedIcon Size="16"
-                                       Value="{x:Static icons:IconValues.NexusColor}" />
+                                       Value="{x:Static icons:IconValues.OpenInNew}" />
                     <TextBlock Text="{x:Static resources:Language.CollectionLoadoutView_NexusMods}"
                                Theme="{StaticResource BodySMNormalTheme}"
                                Foreground="{StaticResource PrimaryStrongBrush}"
