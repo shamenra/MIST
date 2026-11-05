@@ -151,6 +151,60 @@ public class MISTSteamLibraryCatalogTests
                 .Where(x => x.Path == library)).IsOnline);
     }
 
+    [Fact]
+    public void MISTAssociatesExternalLibraryWithFlatpakSteam()
+    {
+        using var fixture = new Fixture();
+
+        var steamRoot = Path.Combine(
+            fixture.Home,
+            ".var", "app", "com.valvesoftware.Steam",
+            "data", "Steam");
+
+        var steamapps = Path.Combine(
+            steamRoot, "steamapps");
+
+        Directory.CreateDirectory(steamapps);
+
+        var external = Path.Combine(
+            fixture.Root, "External", "SteamLibrary");
+
+        Directory.CreateDirectory(
+            Path.Combine(external, "steamapps"));
+
+        File.WriteAllText(
+            Path.Combine(steamapps, "libraryfolders.vdf"),
+            "\"path\" \"" + external + "\"");
+
+        var catalog = fixture.CreateCatalog();
+
+        Assert.Equal(
+            steamRoot,
+            catalog.FindSteamRootForLibrary(external));
+    }
+
+    [Fact]
+    public void MISTOfflineManualLibraryHasNoInventedSteamRoot()
+    {
+        using var fixture = new Fixture();
+
+        var offline = Path.Combine(
+            fixture.Root, "Disconnected", "SteamLibrary");
+
+        var catalog = fixture.CreateCatalog();
+
+        catalog.AddManual(offline);
+
+        Assert.Null(
+            catalog.FindSteamRootForLibrary(offline));
+
+        var entry = Assert.Single(
+            catalog.Refresh().Where(x => x.Path == offline));
+
+        Assert.True(entry.UserAdded);
+        Assert.False(entry.IsOnline);
+    }
+
     private sealed class Fixture : IDisposable
     {
         public string Root { get; } = Path.Combine(

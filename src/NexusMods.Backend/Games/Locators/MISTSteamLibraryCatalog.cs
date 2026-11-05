@@ -285,6 +285,99 @@ public sealed class MISTSteamLibraryCatalog
             .ToArray();
     }
 
+    /// <summary>
+    /// Finds the Steam installation whose library registry
+    /// references this library.
+    ///
+    /// Prefer Flatpak Steam when both native and Flatpak
+    /// registries reference the same external library.
+    ///
+    /// Returns null for libraries not associated with any
+    /// known Steam installation.
+    /// </summary>
+    public string? FindSteamRootForLibrary(string libraryPath)
+    {
+        libraryPath = Normalize(libraryPath);
+
+        string? selected = null;
+
+        foreach (var candidate in GetKnownSteamRoots())
+        {
+            var root = Normalize(candidate);
+
+            var steamapps = System.IO.Path.Combine(
+                root, "steamapps");
+
+            if (!Directory.Exists(steamapps))
+                continue;
+
+            var matches = root == libraryPath;
+
+            if (!matches)
+            {
+                var registry = System.IO.Path.Combine(
+                    steamapps, "libraryfolders.vdf");
+
+                if (File.Exists(registry))
+                {
+                    try
+                    {
+                        var contents = File.ReadAllText(registry);
+
+                        foreach (Match match in
+                                 LibraryPathPattern.Matches(contents))
+                        {
+                            var value = match.Groups["path"].Value;
+
+                            if (!System.IO.Path.IsPathFullyQualified(value))
+                                continue;
+
+                            try
+                            {
+                                if (Normalize(value) == libraryPath)
+                                {
+                                    matches = true;
+                                    break;
+                                }
+                            }
+                            catch (ArgumentException)
+                            {
+                                // Ignore invalid registry paths.
+                            }
+                        }
+                    }
+                    catch (IOException)
+                    {
+                        // An unavailable registry is not fatal.
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        // Preserve discovery from other roots.
+                    }
+                }
+            }
+
+            if (!matches)
+                continue;
+
+            var isFlatpak = root.Contains(
+                "/.var/app/com.valvesoftware.Steam/",
+                StringComparison.Ordinal);
+
+            var previousFlatpak = selected?.Contains(
+                "/.var/app/com.valvesoftware.Steam/",
+                StringComparison.Ordinal) ?? false;
+
+            if (selected is null ||
+                (isFlatpak && !previousFlatpak))
+            {
+                selected = root;
+            }
+        }
+
+        return selected;
+    }
+
     private IEnumerable<string> GetKnownSteamRoots()
     {
         yield return System.IO.Path.Combine(
