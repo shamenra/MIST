@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using GameFinder.StoreHandlers.Steam;
 using GameFinder.StoreHandlers.Steam.Services;
 using Microsoft.Extensions.Logging;
@@ -35,10 +36,88 @@ internal class SteamLocator : IGameLocator
 
     public IEnumerable<GameLocatorResult> Locate()
     {
+        // MIST-006-02A: Opt-in discovery diagnostics.
+        // Does not modify Steam configuration or game files.
+        var mistTrace = Environment.GetEnvironmentVariable(
+            "MIST_TRACE_STEAM") == "1";
+
+        var mistDiscovered = 0;
+        var mistMatched = 0;
+        var mistErrors = 0;
+
+        // MIST-006-02B:
+        // Discover and remember Steam libraries separately from
+        // GameFinder's installation detection.
+        //
+        // This first integration is catalog-only. It does not
+        // authorize deployments or replace GameFinder results.
+        try
+        {
+            var libraryCatalog =
+                MISTSteamLibraryCatalog.CreateForCurrentUser();
+
+            // Temporary developer entry point until the
+            // Add Library UI is implemented.
+            var manuallyAddedPath =
+                Environment.GetEnvironmentVariable(
+                    "MIST_STEAM_LIBRARY_ADD");
+
+            if (!string.IsNullOrWhiteSpace(manuallyAddedPath))
+                libraryCatalog.AddManual(manuallyAddedPath);
+
+            var libraries = libraryCatalog.Refresh();
+
+            if (mistTrace)
+            {
+                foreach (var library in libraries)
+                {
+                    _logger.LogInformation(
+                        "MIST-006-02: Library Path={Path}, " +
+                        "Online={Online}, UserAdded={UserAdded}, " +
+                        "Manifests={Manifests}",
+                        library.Path,
+                        library.IsOnline,
+                        library.UserAdded,
+                        library.ManifestCount);
+                }
+
+                _logger.LogInformation(
+                    "MIST-006-02: Library catalog complete. " +
+                    "Libraries={Count}, Online={Online}",
+                    libraries.Count,
+                    libraries.Count(x => x.IsOnline));
+            }
+        }
+        catch (Exception error) when (
+            error is IOException or
+            UnauthorizedAccessException or
+            ArgumentException or
+            JsonException)
+        {
+            // Failure to read the optional M.I.S.T. catalog
+            // must not break the inherited Steam locator.
+            _logger.LogWarning(
+                error,
+                "MIST-006-02: Steam library catalog unavailable.");
+        }
+
+
+        if (mistTrace)
+        {
+            _logger.LogInformation(
+                "MIST-006-02: Steam discovery starting. " +
+                "HOME={Home}, XDG_DATA_HOME={Xdg}, " +
+                "RegisteredSteamGames={Registered}",
+                Environment.GetEnvironmentVariable("HOME"),
+                Environment.GetEnvironmentVariable("XDG_DATA_HOME"),
+                _registeredGames.Count);
+        }
+
         foreach (var result in _handler.FindAllGames())
         {
             if (result.TryPickT1(out var errorMessage, out var gameFinderGame))
             {
+                mistErrors++;
                 _logger.LogWarning("Error locating games: {ErrorMessage}", errorMessage.Message);
                 continue;
             }
@@ -46,7 +125,32 @@ internal class SteamLocator : IGameLocator
             var storeIdentifier = gameFinderGame.AppId.Value;
             _logger.LogDebug("Found game '{GameName}' with store identifier '{StoreIdentifier}'", gameFinderGame.Name, storeIdentifier);
 
-            if (!_registeredGames.TryGetValue(storeIdentifier, out var game)) continue;
+            mistDiscovered++;
+
+            if (mistTrace && mistDiscovered <= 12)
+            {
+                _logger.LogInformation(
+                    "MIST-006-02: GameFinder found " +
+                    "AppId={AppId}, Name={Name}, Path={Path}",
+                    storeIdentifier,
+                    gameFinderGame.Name,
+                    gameFinderGame.Path);
+            }
+
+            if (!_registeredGames.TryGetValue(
+                    storeIdentifier, out var game))
+                continue;
+
+            mistMatched++;
+
+            if (mistTrace)
+            {
+                _logger.LogInformation(
+                    "MIST-006-02: SUPPORTED MATCH " +
+                    "AppId={AppId}, Name={Name}",
+                    storeIdentifier,
+                    gameFinderGame.Name);
+            }
 
             var path = gameFinderGame.Path;
 
@@ -78,6 +182,17 @@ internal class SteamLocator : IGameLocator
                 Store = Store,
                 Locator = this,
             };
+        }
+
+        if (mistTrace)
+        {
+            _logger.LogInformation(
+                "MIST-006-02: Steam discovery complete. " +
+                "Discovered={Discovered}, " +
+                "SupportedMatches={Matched}, Errors={Errors}",
+                mistDiscovered,
+                mistMatched,
+                mistErrors);
         }
     }
 
