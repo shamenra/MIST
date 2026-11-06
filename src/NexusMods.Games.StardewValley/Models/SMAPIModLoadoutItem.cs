@@ -4,7 +4,7 @@ using NexusMods.MnemonicDB.Abstractions.Models;
 
 namespace NexusMods.Games.StardewValley.Models;
 
-[Obsolete("Will be removed with a future migration")]
+// Legacy persisted model. Preserve until a database migration removes it.
 [Include<LoadoutItemGroup>]
 public partial class SMAPIModLoadoutItem : IModelDefinition
 {

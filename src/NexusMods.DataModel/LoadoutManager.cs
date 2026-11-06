@@ -76,8 +76,17 @@ internal partial class LoadoutManager : ILoadoutManager
     {
         return _jobMonitor.Begin(new CreateLoadoutJob(installation), async ctx =>
         {
-            // Prime the hash database to make sure it's loaded
+            // MIST-006-14B2B9.2: explicit opt-in for *registration only*.
+            // A deferred loadout must not be treated as file-operation ready.
+            var deferInitialSynchronization =
+                string.Equals(Environment.GetEnvironmentVariable("MIST_EXPERIMENTAL_DEFER_GAME_SYNC"),
+                    "1", StringComparison.Ordinal);
+
+            // This is still a separate potential latency source. Keep version
+            // behavior unchanged in this first safety-focused slice and measure it.
+            var hashDbTimer = Stopwatch.StartNew();
             await _fileHashesService.GetFileHashesDb();
+            _logger.LogInformation("MIST-B2B9 hash DB ready after {ElapsedMs} ms", hashDbTimer.ElapsedMilliseconds);
 
             var metadata = await ManageInstallation(installation);
             var shortName = GetNewShortName(_connection.Db, metadata);
@@ -129,21 +138,31 @@ internal partial class LoadoutManager : ILoadoutManager
             var result = await tx.Commit();
             var remappedLoadout = result.Remap(loadout);
 
-            // If there is no currently synced loadout, then we can ingest the game folder
-            if (!GameInstallMetadata.LastSyncedLoadout.TryGetValue(remappedLoadout.Installation, out var lastSyncedLoadoutId))
+            // The inherited behavior synchronizes the first loadout immediately,
+            // including potentially expensive indexing and file operations.
+            // For the experimental path, registration intentionally ends here.
+            var needsFirstSynchronization =
+                !GameInstallMetadata.LastSyncedLoadout.TryGetValue(
+                    remappedLoadout.Installation, out var lastSyncedLoadoutId)
+                || !Loadout.Load(remappedLoadout.Db, lastSyncedLoadoutId).IsValid();
+
+            if (needsFirstSynchronization && deferInitialSynchronization)
             {
-                await _synchronizerService.Synchronize(remappedLoadout.LoadoutId);
-                remappedLoadout = remappedLoadout.Rebase();
+                _logger.LogWarning(
+                    "MIST-B2B9 registered {Game} without initial synchronization. " +
+                    "Library is observation-only until an authorized preparation workflow exists.",
+                    installation.Game.DisplayName);
             }
-            else
+            else if (needsFirstSynchronization)
             {
-                // check if the last synced loadout is valid (can apparently happen if the user unmanaged the game and manages it again)
-                var lastSyncedLoadout = Loadout.Load(remappedLoadout.Db, lastSyncedLoadoutId);
-                if (!lastSyncedLoadout.IsValid())
-                {
-                    await _synchronizerService.Synchronize(remappedLoadout.LoadoutId);
-                    remappedLoadout = remappedLoadout.Rebase();
-                }
+                // Legacy path only. The normal synchronizer gate rejects an
+                // unprepared first sync; loadout creation opts into that old flow.
+                var syncTimer = Stopwatch.StartNew();
+                await _synchronizerService.Synchronize(
+                    remappedLoadout.LoadoutId, allowFirstSynchronization: true);
+                remappedLoadout = remappedLoadout.Rebase();
+                _logger.LogInformation("MIST-B2B9 initial synchronization completed after {ElapsedMs} ms",
+                    syncTimer.ElapsedMilliseconds);
             }
 
             return remappedLoadout;
@@ -276,6 +295,12 @@ internal partial class LoadoutManager : ILoadoutManager
     public async ValueTask ActivateLoadout(LoadoutId loadoutId, CancellationToken cancellationToken = default)
     {
         var loadout = Loadout.Load(_connection.Db, loadoutId);
+        // Activation bypasses SynchronizerService and therefore needs its own
+        // fail-closed check. Observation-only registration is NOT readiness.
+        if (!GameInstallMetadata.LastSyncedLoadout.TryGetValue(loadout.Installation, out _))
+            throw new InvalidOperationException(
+                "M.I.S.T.: game registration is observation-only; loadout activation is unavailable until preparation is implemented.");
+
         var synchronizer = loadout.InstallationInstance.GetGame().Synchronizer;
 
         var state = await synchronizer.ReindexState(loadout.InstallationInstance);

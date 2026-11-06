@@ -109,7 +109,6 @@ public class TopBarViewModel : AViewModel<ITopBarViewModel>, ITopBarViewModel
             var logPath = loggingSettings.MainProcessLogFilePath.ToPath(fileSystem);
             osInterop.OpenFileInDirectory(logPath);
 
-            Tracking.AddEvent(Events.Help.ViewAppLogs, metadata: new EventMetadata(name: null));
         });
 
         ShowWelcomeMessageCommand = ReactiveCommand.Create(() =>
@@ -117,7 +116,6 @@ public class TopBarViewModel : AViewModel<ITopBarViewModel>, ITopBarViewModel
             var welcomeOverlayViewModel = serviceProvider.GetRequiredService<IWelcomeOverlayViewModel>();
             overlayController.Enqueue(welcomeOverlayViewModel);
 
-            Tracking.AddEvent(Events.Help.GiveFeedback, metadata: new EventMetadata(name: null));
         });
 
         var canLogin = this.WhenAnyValue(x => x.IsLoggedIn).Select(isLoggedIn => !isLoggedIn).ToObservable();

@@ -22,8 +22,8 @@ namespace NexusMods.StandardGameLocators.TestHelpers;
 public class StubbedFileHasherService : IFileHashesService
 {
     private readonly IServiceProvider _provider;
-    private DatomStore _datomStore;
-    private Connection _connection;
+    private DatomStore? _datomStore;
+    private Connection? _connection;
     private IDb? _current;
     private readonly IFileStore _fileStore;
     private readonly TemporaryFileManager _temporaryFileManager;
@@ -43,13 +43,14 @@ public class StubbedFileHasherService : IFileHashesService
         var settings = DatomStoreSettings.InMemory;
         _datomStore = new DatomStore(_provider.GetRequiredService<ILogger<DatomStore>>(), settings, backend);
         _connection = new Connection(_provider.GetRequiredService<ILogger<Connection>>(), _datomStore, _provider, [], prefix: "hashes", queryEngine: _provider.GetRequiredService<IQueryEngine>());
+        var connection = _connection ?? throw new InvalidOperationException("Hash database connection was not initialized.");
 
         foreach (var file in new[] {"StubbedGameState.zip", "StubbedGameState_game_v2.zip"})
         {
             var stateFile = FileSystem.Shared.GetKnownPath(KnownPath.EntryDirectory) / "Resources" / file;
             using var zipArchive = new ZipArchive(stateFile.Read());
 
-            using var tx = _connection.BeginTransaction();
+            using var tx = connection.BeginTransaction();
 
             List<ArchivedFileEntry> archiveFiles = [];
             List<EntityId> pathIds = [];

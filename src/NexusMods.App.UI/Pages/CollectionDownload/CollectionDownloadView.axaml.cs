@@ -153,7 +153,7 @@ public partial class CollectionDownloadView : ReactiveUserControl<ICollectionDow
                             return;
                         }
                 
-                        ViewModel!.TreeDataGridAdapter.Filter.Value = filter;
+                        ViewModel!.TreeDataGridAdapter.DownloadFilter.Value = filter;
                     }).DisposeWith(d);
                 
                 this.WhenAnyValue(
@@ -162,7 +162,7 @@ public partial class CollectionDownloadView : ReactiveUserControl<ICollectionDow
                     view => view.ViewModel!.IsInstalled.Value,
                     view => view.ViewModel!.HasInstalledAllOptionalItems.Value
                     )
-                    .CombineLatest(ViewModel!.TreeDataGridAdapter.Filter.AsSystemObservable(), (a, b) => (a.Item1, a.Item2, a.Item3, a.Item4, b))
+                    .CombineLatest(ViewModel!.TreeDataGridAdapter.DownloadFilter.AsSystemObservable(), (a, b) => (a.Item1, a.Item2, a.Item3, a.Item4, b))
                     .Subscribe(tuple =>
                     {
                         var (countDownloadedRequiredItems, countDownloadedOptionalItems, isInstalled, hasInstalledAllOptionals, filter) = tuple;

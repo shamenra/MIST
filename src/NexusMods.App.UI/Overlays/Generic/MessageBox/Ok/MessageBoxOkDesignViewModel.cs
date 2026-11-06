@@ -1,13 +1,11 @@
-using System.ComponentModel;
 using NexusMods.App.UI.Controls.MarkdownRenderer;
 using R3;
 using ReactiveUI;
 
 namespace NexusMods.App.UI.Overlays.Generic.MessageBox.Ok;
 
-public class MessageBoxOkDesignViewModel: IMessageBoxOkViewModel
+public class MessageBoxOkDesignViewModel : ReactiveObject, IMessageBoxOkViewModel
 {
-    public event PropertyChangedEventHandler? PropertyChanged;
     public ViewModelActivator Activator { get; } = null!;
     public IOverlayController Controller { get; set; } = null!;
     public Status Status { get; set; }

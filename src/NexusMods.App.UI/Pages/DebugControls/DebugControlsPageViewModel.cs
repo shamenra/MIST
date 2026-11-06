@@ -37,8 +37,6 @@ public class DebugControlsPageViewModel : APageViewModel<IDebugControlsPageViewM
         TabTitle = "Debug Controls";
         TabIcon = IconValues.ColorLens;
         
-        WindowManager = windowManager;
-
         GenerateUnhandledException = ReactiveCommand.Create(() => throw new Exception("Help me! This is an unhandled exception"));
         ShowInfoNotificationCommand = ReactiveCommand.Create(() =>
         {
@@ -55,7 +53,7 @@ public class DebugControlsPageViewModel : APageViewModel<IDebugControlsPageViewM
         MarkdownRenderer = markdownRendererViewModel;
     }
 
-    public IWindowManager WindowManager { get; }
+    IWindowManager IDebugControlsPageViewModel.WindowManager => WindowManager;
 
     public ReactiveCommand<Unit, Unit> GenerateUnhandledException { get; }
 
@@ -67,7 +65,7 @@ public class DebugControlsPageDesignViewModel : APageViewModel<IDebugControlsPag
 {
     public DebugControlsPageDesignViewModel() : base(new DesignWindowManager()) { }
     public ReactiveCommand<Unit, Unit> GenerateUnhandledException { get; }= ReactiveCommand.Create(() => { });
-    public IWindowManager WindowManager { get; } = new DesignWindowManager();
+    IWindowManager IDebugControlsPageViewModel.WindowManager => WindowManager;
     public IServiceProvider ServiceProvider { get; } = null!;
 
     public IMarkdownRendererViewModel MarkdownRenderer { get; } = new MarkdownRendererViewModel() 

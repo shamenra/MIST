@@ -106,7 +106,6 @@ public partial class SearchControl : UserControl
                     SearchTextBox.Focus();
 
                     // Tracking
-                    Tracking.AddEvent(Events.Search.OpenSearch, new EventMetadata(name: PageName));
                 }
             });
     }

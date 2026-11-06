@@ -17,7 +17,11 @@ public interface ISynchronizerService
     /// new changes in the loadout will be applied to the game folder.
     /// </summary>
     /// <throws cref="ExecutableInUseException">Thrown if the game EXE is in use, meaning that it's running.</throws>
-    public Task Synchronize(LoadoutId loadout);
+    /// <param name="allowFirstSynchronization">
+    /// Legacy loadout-creation initialization only. Do not use this to enable
+    /// operations on M.I.S.T. observation-only registrations.
+    /// </param>
+    public Task Synchronize(LoadoutId loadout, bool allowFirstSynchronization = false);
     
     /// <summary>
     /// Detaches management records without changing any game-directory files.

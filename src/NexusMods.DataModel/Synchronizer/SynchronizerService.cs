@@ -52,6 +52,10 @@ public class SynchronizerService : ISynchronizerService
     {
         var db = _conn.Db;
         var loadout = Loadout.Load(db, loadoutId);
+        if (!GameInstallMetadata.LastSyncedLoadout.TryGetValue(loadout.Installation, out _))
+            throw new InvalidOperationException(
+                "M.I.S.T.: this game is registered for observation only; no safe synchronization baseline is prepared.");
+
         var synchronizer = ((IGame)loadout.Game).Synchronizer;
         var metaData = loadout.Installation;
         var hasPreviousLoadout = GameInstallMetadata.LastSyncedLoadoutTransaction.TryGetValue(metaData, out var lastId);
@@ -71,6 +75,10 @@ public class SynchronizerService : ISynchronizerService
                 var loadout = Loadout.Load(db, loadoutId);
                 if (!loadout.IsValid())
                     return ValueTask.FromResult(false);
+                // No initial synchronization means a pending, unprepared game,
+                // not a normal empty-diff state.
+                if (!GameInstallMetadata.LastSyncedLoadout.TryGetValue(loadout.Installation, out _))
+                    return ValueTask.FromResult(false);
                 var synchronizer = loadout.InstallationInstance.GetGame().Synchronizer;
                 var metaData = loadout.Installation;
                 var hasPreviousLoadout = GameInstallMetadata.LastSyncedLoadoutTransaction.TryGetValue(metaData, out var lastId);
@@ -83,7 +91,7 @@ public class SynchronizerService : ISynchronizerService
     }
     
     /// <inheritdoc />
-    public async Task Synchronize(LoadoutId loadoutId)
+    public async Task Synchronize(LoadoutId loadoutId, bool allowFirstSynchronization = false)
     {
         await _jobMonitor.Begin(new SynchronizeLoadoutJob(loadoutId),
             async ctx =>
@@ -97,10 +105,19 @@ public class SynchronizerService : ISynchronizerService
                     {
                         return Unit.Default;
                     }
+                    // Persistent fail-closed barrier: until a first sync is
+                    // authorized, neither Apply nor background callers may
+                    // interpret an empty disk-state as permission to mutate.
+                    if (!allowFirstSynchronization &&
+                        !GameInstallMetadata.LastSyncedLoadout.TryGetValue(loadout.Installation, out _))
+                        throw new InvalidOperationException(
+                            "M.I.S.T.: game is registered in observation-only mode. " +
+                            "File operations are disabled until preparation is implemented.");
+
                     ThrowIfMainBinaryInUse(loadout);
 
                     var loadoutState = GetOrAddLoadoutState(loadoutId);
-                    using var _ = loadoutState.WithLock();
+                    using var loadoutLock = loadoutState.WithLock();
 
                     var gameState = GetOrAddGameState(loadout.InstallationId);
                     using var _2 = gameState.WithLock();
@@ -248,9 +265,6 @@ public class SynchronizerService : ISynchronizerService
             .SelectAwait(
                 async (tuple, cancellationToken) =>
                 {
-                    // To make sure the DB is loaded, before we start diffing
-                    await _fileHashesService.GetFileHashesDb();
-                 
                     var (busy, last, rev, revDbTx) = tuple;
                     
                     // if the loadout is not found, it means it was deleted
@@ -259,6 +273,13 @@ public class SynchronizerService : ISynchronizerService
                     
                     if (busy)
                         return LoadoutSynchronizerState.Pending;
+
+                    // No persisted LastSyncedLoadout means no prepared baseline.
+                    // Keep Apply/Launch disabled and avoid an expensive diff.
+                    if (last == default(LoadoutWithTxId))
+                        return LoadoutSynchronizerState.Pending;
+
+                    await _fileHashesService.GetFileHashesDb();
 
                     if (last.Id != loadoutId && last != default(LoadoutWithTxId))
                         return LoadoutSynchronizerState.OtherLoadoutSynced;

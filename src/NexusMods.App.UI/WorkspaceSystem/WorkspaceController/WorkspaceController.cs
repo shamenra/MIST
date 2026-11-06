@@ -342,17 +342,6 @@ internal sealed class WorkspaceController : ReactiveObject, IWorkspaceController
         if (!TryGetWorkspace(workspaceId, out WorkspaceViewModel? workspaceViewModel)) return;
         workspaceViewModel.OpenPage(pageData, behavior, selectTab, checkOtherPanels);
 
-        if (Tracking.IsEnabled && pageData.HasValue)
-        {
-            var pageType = pageData.Value.Context.TrackingName;
-            var eventDefinition = behavior.Match(
-                f0: _ => Events.Page.ReplaceTab,
-                f1: _ => Events.Page.NewTab,
-                f2: _ => Events.Page.NewPanel
-            );
-
-            Tracking.AddEvent(eventDefinition, new EventMetadata(name: pageType));
-        }
     }
 
     public void SwapPanels(WorkspaceId workspaceId, PanelId firstPanelId, PanelId secondPanelId)

@@ -3,7 +3,15 @@
 
     <PropertyGroup>
         <IsPackable>false</IsPackable>
+
+        <!-- Weave needs the generated-source path during initialization. -->
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Expose the generated-source path to Weave's source generator. -->
+        <CompilerVisibleProperty Include="CompilerGeneratedFilesOutputPath" />
+    </ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="NSubstitute" />

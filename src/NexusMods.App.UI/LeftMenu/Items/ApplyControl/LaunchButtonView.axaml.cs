@@ -16,25 +16,33 @@ public partial class LaunchButtonView : ReactiveUserControl<ILaunchButtonViewMod
             var isRunning = ViewModel!.IsRunningObservable;
             var isNotRunning = ViewModel!.IsRunningObservable.Select(running => !running);
 
-            isNotRunning.BindToUi(this, view => view.LaunchButton.IsEnabled)
+            isNotRunning
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(enabled => LaunchButton.IsEnabled = enabled)
                 .DisposeWith(d);
             
             // Show progress bar when running
-            isRunning.BindToUi(this, view => view.LaunchSpinner.IsVisible)
+            isRunning
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(visible => LaunchSpinner.IsVisible = visible)
                 .DisposeWith(d);
             
             // Show icon when not running
-            isNotRunning.BindToUi(this, view => view.LaunchIcon.IsVisible)
+            isNotRunning
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(visible => LaunchIcon.IsVisible = visible)
                 .DisposeWith(d);
             
             // Bind the 'launch' button.
             this.WhenAnyValue(view => view.ViewModel!.Command)
-                .BindToUi(this, view => view.LaunchButton.Command)
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(command => LaunchButton.Command = command)
                 .DisposeWith(d);
             
             // Set the 'play' / 'running' text.
             this.WhenAnyValue(view => view.ViewModel!.Label)
-                .BindToUi(this, view => view.LaunchText.Text)
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(text => LaunchText.Text = text)
                 .DisposeWith(d);
         });
     }

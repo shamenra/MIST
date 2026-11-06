@@ -7,7 +7,6 @@ namespace NexusMods.Sdk.Games;
 /// <summary>
 /// Used to store information about manually added games.
 /// </summary>
-[Obsolete("this is a hack that will be removed soon tm")]
 public partial class ManuallyAddedGame : IModelDefinition
 {
     private const string Namespace = "NexusMods.StandardGameLocators.ManuallyAddedGame";

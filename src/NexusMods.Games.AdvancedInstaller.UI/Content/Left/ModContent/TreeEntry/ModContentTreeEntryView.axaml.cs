@@ -55,9 +55,10 @@ public partial class
 
     private void InitView(IModContentTreeEntryViewModel vm)
     {
+        EntryIcon.IsVisible = !vm.IsRoot;
+
         if (vm.IsRoot)
         {
-            EntryIcon.IsVisible = false;
             MakeTextBlockBold();
             FileNameTextBlock.Text = Language.TreeEntryView_FileNameTextBlock_All_mod_files;
             InstallRoundedButtonTextBlock.Text = Language.TreeEntryView_InstallRoundedButtonTextBlock_Install_all;
@@ -68,14 +69,14 @@ public partial class
 
             if (vm.IsDirectory)
             {
-                EntryIcon.Classes.Add("FolderOutline");
+                EntryIcon.Value = FileTreeNodeIconType.ClosedFolder.GetIconValue();
                 MakeTextBlockBold();
                 InstallRoundedButtonTextBlock.Text =
                     Language.TreeEntryView_InstallRoundedButtonTextBlock_Install_folder;
             }
             else
             {
-                EntryIcon.Classes.Add(vm.FileName.GetIconClassFromFileName());
+                EntryIcon.Value = vm.FileName.GetIconValueFromFileName();
                 InstallRoundedButtonTextBlock.Text = Language.TreeEntryView_InstallRoundedButtonTextBlock_Install;
             }
         }

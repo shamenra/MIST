@@ -91,23 +91,6 @@ public static class FileTreeNodeIconTypeHelpers
     };
     
     /// <summary>
-    /// Provides the XAML class to be used with <see cref="UnifiedIcon"/> for the given icon type.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    [Obsolete("To be removed with migration to new ViewModFiles and Preview Changes")]
-    public static string GetIconClass(this FileTreeNodeIconType iconType) => iconType switch
-    {
-        FileTreeNodeIconType.File => "File",
-        FileTreeNodeIconType.ClosedFolder => "FolderOutline",
-        FileTreeNodeIconType.OpenFolder => "FolderOpenOutline",
-        FileTreeNodeIconType.Image => "Image",
-        FileTreeNodeIconType.Text => "FileDocumentOutline",
-        FileTreeNodeIconType.Audio => "MusicNote",
-        FileTreeNodeIconType.Video => "VideoOutline",
-        _ => ThrowArgumentOutOfRangeException(iconType),
-    };
-    
-    /// <summary>
     /// Provides the direct <see cref="IconValues"/> for the given icon type.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -124,24 +107,12 @@ public static class FileTreeNodeIconTypeHelpers
     };
 
     /// <summary>
-    /// Provides the XAML class to be used with <see cref="UnifiedIcon"/> for the given extension.
+    /// Gets the icon value associated with a file name.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string GetIconClass(this Extension extension)
-    {
-        var category = extension.GetCategory();
-        return GetIconClass(GetIconType(category));
-    }
-    
-    /// <summary>
-    /// Provides the XAML class to be used with <see cref="UnifiedIcon"/> for the given file name.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string GetIconClassFromFileName(this string fileName)
-    {
-        return RelativePath.FromUnsanitizedInput(fileName).Extension.GetIconClass();
-    }
+    public static IconValue GetIconValueFromFileName(this string fileName) =>
+        RelativePath.FromUnsanitizedInput(fileName)
+            .Extension.GetIconType().GetIconValue();
 
-    private static string ThrowArgumentOutOfRangeException(FileTreeNodeIconType iconType) => throw new ArgumentOutOfRangeException(nameof(iconType), iconType, null);
     private static IconValue ThrowArgumentOutOfRangeExceptionIcon(FileTreeNodeIconType iconType) => throw new ArgumentOutOfRangeException(nameof(iconType), iconType, null);
 }

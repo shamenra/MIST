@@ -27,6 +27,10 @@ public interface ILoadoutDiagnosticEmitter : IDiagnosticEmitter
     /// </summary>
     IAsyncEnumerable<Diagnostic> Diagnose(Loadout.ReadOnly loadout, FrozenDictionary<GamePath, SyncNode> syncTree, CancellationToken cancellationToken)
     {
+        // Compatibility fallback for emitters that have not migrated
+        // to the overload accepting the synchronization tree.
+#pragma warning disable CS0618
         return Diagnose(loadout, cancellationToken);
+#pragma warning restore CS0618
     }
 }

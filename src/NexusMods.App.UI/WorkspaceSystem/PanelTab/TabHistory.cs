@@ -82,12 +82,6 @@ internal class TabHistory : ReactiveObject
             IsTraversing = false;
         }
 
-        if (Tracking.IsEnabled)
-        {
-            var current = _history[currentPosition % Limit];
-            var eventDefinition = offset > 0 ? Events.PageHistory.Forward : Events.PageHistory.Back;
-            Tracking.AddEvent(eventDefinition, new EventMetadata(name: current.Context.TrackingName));
-        }
     }
 
     /// <summary>

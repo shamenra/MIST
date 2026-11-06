@@ -26,7 +26,7 @@ public class Startup
     private static bool _hasBeenSetup = false;
     private static IServiceProvider _provider = null!;
     private static ILogger<Startup> _logger = null!;
-    private static ulong _windowCount;
+    private static int _windowCount;
 
 #pragma warning disable CS0028 // Disables warning about not being a valid entry point
     
@@ -81,15 +81,24 @@ public class Startup
     {
         // TODO: enable multi-window support
         // https://github.com/Nexus-Mods/NexusMods.App/issues/1267
-        if (Interlocked.Read(ref _windowCount) > 0)
+        if (Interlocked.CompareExchange(ref _windowCount, 1, 0) != 0)
         {
-            _logger.LogError("We currently only allow 1 MainWindow. See https://github.com/Nexus-Mods/NexusMods.App/issues/1267 for details");
+            _logger.LogError("Only one MainWindow may be open.");
             return;
         }
 
-        var reactiveWindow = _provider.GetRequiredService<MainWindow>();
-        reactiveWindow.ViewModel = _provider.GetRequiredService<MainWindowViewModel>();
-        reactiveWindow.Show();
+        try
+        {
+            var reactiveWindow = _provider.GetRequiredService<MainWindow>();
+            reactiveWindow.ViewModel = _provider.GetRequiredService<MainWindowViewModel>();
+            reactiveWindow.Closed += (_, args) => Interlocked.Exchange(ref _windowCount, 0);
+            reactiveWindow.Show();
+        }
+        catch
+        {
+            Interlocked.Exchange(ref _windowCount, 0);
+            throw;
+        }
     }
 
     public static AppBuilder BuildAvaloniaApp(IServiceProvider serviceProvider)

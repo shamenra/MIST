@@ -558,7 +558,7 @@ public class CollectionDownloadTreeDataGridAdapter :
     private readonly LoadoutId _targetLoadout;
     private readonly CollectionDataProvider _collectionDataProvider;
 
-    public R3.ReactiveProperty<CollectionDownloadsFilter> Filter { get; } = new(value: CollectionDownloadsFilter.OnlyRequired);
+    public R3.ReactiveProperty<CollectionDownloadsFilter> DownloadFilter { get; } = new(value: CollectionDownloadsFilter.OnlyRequired);
 
     public Subject<OneOf<InstallMessage, DownloadNexusModsMessage, DownloadExternalMessage, ManualDownloadOpenModal>> MessageSubject { get; } = new();
 
@@ -574,7 +574,7 @@ public class CollectionDownloadTreeDataGridAdapter :
 
     protected override IObservable<IChangeSet<CompositeItemModel<EntityId>, EntityId>> GetRootsObservable(bool viewHierarchical)
     {
-        return _collectionDataProvider.ObserveCollectionItems(_revisionMetadata, Filter.AsSystemObservable(), _targetLoadout);
+        return _collectionDataProvider.ObserveCollectionItems(_revisionMetadata, DownloadFilter.AsSystemObservable(), _targetLoadout);
     }
 
     protected override void BeforeModelActivationHook(CompositeItemModel<EntityId> model)

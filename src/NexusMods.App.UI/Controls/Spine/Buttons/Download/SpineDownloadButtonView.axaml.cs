@@ -16,7 +16,8 @@ public partial class SpineDownloadButtonView : ReactiveUserControl<ISpineDownloa
         this.WhenActivated(d =>
         {
             this.WhenAnyValue(view => view.ViewModel!.Click)
-                .BindToUi(this, view => view.ParentButton.Command)
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(command => ParentButton.Command = command)
                 .DisposeWith(d);
 
             this.WhenAnyValue(view => view.ViewModel!.Progress)
@@ -31,17 +32,20 @@ public partial class SpineDownloadButtonView : ReactiveUserControl<ISpineDownloa
             this.WhenAnyValue(view => view.ViewModel!.Progress)
                 .Where(p => p.HasValue)
                 .Select(p => p.Value.Value * 360)
-                .BindToUi(this, vm => vm.ProgressArc.SweepAngle)
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(angle => ProgressArc.SweepAngle = angle)
                 .DisposeWith(d);
 
             this.WhenAnyValue(view => view.ViewModel!.Number)
                 .Select(n => n.ToString("###0.0"))
-                .BindToUi(this, view => view.NumberTextBlock.Text)
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(text => NumberTextBlock.Text = text)
                 .DisposeWith(d);
 
             this.WhenAnyValue(view => view.ViewModel!.Units)
                 .Select(n => n.ToUpperInvariant())
-                .BindToUi(this, view => view.UnitsTextBlock.Text)
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(text => UnitsTextBlock.Text = text)
                 .DisposeWith(d);
 
             this.OneWayBind(ViewModel, vm => vm.ToolTip,

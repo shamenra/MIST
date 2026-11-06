@@ -35,7 +35,7 @@ public partial class GameInstallMetadata : IModelDefinition
     /// User friendly name for the game.
     /// May be referred to from diagnostics, telemetry or otherwise.
     /// </summary>
-    [Obsolete("to be removed")]
+    // Retained for database compatibility; still populated by LoadoutManager.
     public static readonly StringAttribute Name = new(Namespace, nameof(Name));
 
     /// <summary>

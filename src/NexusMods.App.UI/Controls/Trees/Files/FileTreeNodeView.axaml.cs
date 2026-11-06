@@ -13,7 +13,6 @@ namespace NexusMods.App.UI.Controls.Trees.Files;
 
 public partial class FileTreeNodeView : ReactiveUserControl<IFileTreeNodeViewModel>
 {
-    private FileTreeNodeIconType _lastType = FileTreeNodeIconType.File;
     
     public FileTreeNodeView()
     {
@@ -21,12 +20,8 @@ public partial class FileTreeNodeView : ReactiveUserControl<IFileTreeNodeViewMod
         this.WhenActivated(d =>
             {
                 ViewModel.WhenAnyValue(vm => vm.Icon)
-                    .Subscribe(iconType =>
-                    {
-                        EntryIcon.Classes.Remove(_lastType.GetIconClass());
-                        EntryIcon.Classes.Add(iconType.GetIconClass());
-                        _lastType = iconType;
-                    })
+                    .ObserveOn(RxApp.MainThreadScheduler)
+                    .Subscribe(iconType => EntryIcon.Value = iconType.GetIconValue())
                     .DisposeWith(d);
                 
                 this.WhenAnyValue(v => v.ViewModel)

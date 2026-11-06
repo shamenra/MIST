@@ -361,6 +361,14 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
     public async Task<Loadout.ReadOnly> RunActions(Dictionary<GamePath, SyncNode> syncTree, Loadout.ReadOnly loadout, SynchronizeLoadoutJob? job = null)
     {
         using var _ = await _lock.LockAsync();
+
+        // MIST-14D: An unresolved prior deployment may have an ambiguous
+        // database commit outcome. Do not run another mutation in this game.
+        MISTPendingOperationGate.EnsureClear(
+            MISTDeploymentJournal.GetDefaultDirectory(),
+            loadout.InstallationId.ToString(),
+            ((EntityId)loadout.InstallationId).ToString());
+
         using var tx = Connection.BeginTransaction();
         var gameMetadataId = loadout.InstallationId;
         var locations = loadout.InstallationInstance.Locations;
@@ -420,7 +428,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
                 
                     case Actions.WriteIntrinsic:
                         job?.SetStatus("Writing intrinsic files");
-                        await ActionWriteIntrinsics(syncTree, locations, tx, loadout, job);
+                        await ActionWriteIntrinsics(syncTree, locations, tx, loadout, pendingJournals, job);
                         break;
 
                     case Actions.AddReifiedDelete:
@@ -500,7 +508,7 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         return loadout;
     }
 
-    private async Task ActionWriteIntrinsics(Dictionary<GamePath, SyncNode> syncTree, GameLocations gameLocations, IMainTransaction tx, Loadout.ReadOnly loadout, SynchronizeLoadoutJob? job)
+    private async Task ActionWriteIntrinsics(Dictionary<GamePath, SyncNode> syncTree, GameLocations gameLocations, IMainTransaction tx, Loadout.ReadOnly loadout, List<string> pendingJournals, SynchronizeLoadoutJob? job)
     {
         var intrinsicFiles = IntrinsicFiles(loadout);
         foreach (var (path, node) in syncTree)
@@ -511,9 +519,12 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
             var instance = intrinsicFiles[path];
             var resolvedPath = gameLocations.ToAbsolutePath(path);
             resolvedPath.Parent.CreateDirectory();
-            await using var stream = resolvedPath.Create();
-            stream.SetLength(0);
-            await instance.Write(stream, loadout, syncTree);
+            var pending = await MISTIntrinsicFileWriter.WriteJournaledNewFileAsync(
+                resolvedPath.GetFullPath(),
+                stream => instance.Write(stream, loadout, syncTree),
+                MISTDeploymentJournal.GetDefaultDirectory(),
+                loadout.InstallationId.ToString());
+            pendingJournals.Add(pending);
         }
     }
 
@@ -642,6 +653,13 @@ public partial class ALoadoutSynchronizer : ILoadoutSynchronizer
         using var tx = Connection.BeginTransaction();
 
         var metadata = _gameRegistry.ForceGetMetadata(gameInstallation);
+
+        // MIST-14D: Direct reset/installation-state callers are gated too.
+        MISTPendingOperationGate.EnsureClear(
+            MISTDeploymentJournal.GetDefaultDirectory(),
+            metadata.GameInstallMetadataId.ToString(),
+            metadata.Id.ToString());
+
         var locations = gameInstallation.Locations;
 
         var pendingJournals = new List<string>();
