@@ -52,9 +52,9 @@ public interface ILoadoutManager
     Optional<LoadoutId> GetCurrentlyActiveLoadout(GameInstallation installation);
 
     /// <summary>
-    /// Removes all the loadouts for a game, and resets the game folder to its initial state.
+    /// Removes game management records while preserving all installed game-directory files.
     /// </summary>
-    IJobTask<UnmanageGameJob, GameInstallation> UnManage(GameInstallation installation, bool runGc = true, bool cleanGameFolder = true, CancellationToken cancellationToken = default);
+    IJobTask<UnmanageGameJob, GameInstallation> UnManage(GameInstallation installation, bool runGc = false, bool cleanGameFolder = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Wrapper for item installations.

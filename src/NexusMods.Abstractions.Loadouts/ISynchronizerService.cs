@@ -1,4 +1,4 @@
-﻿using NexusMods.Abstractions.Loadouts.Files.Diff;
+using NexusMods.Abstractions.Loadouts.Files.Diff;
 using NexusMods.Abstractions.Loadouts.Exceptions;
 using NexusMods.Abstractions.Loadouts.Ids;
 using NexusMods.Sdk.Games;
@@ -20,12 +20,12 @@ public interface ISynchronizerService
     public Task Synchronize(LoadoutId loadout);
     
     /// <summary>
-    /// Removes all the loadouts for a game, and resets the game folder to its
-    /// initial state.
+    /// Detaches management records without changing any game-directory files.
+    /// Explicit game restoration is a separate operation.
     /// </summary>
     /// <param name="installation">Game installation which should be unmanaged.</param>
     /// <param name="runGc">If true, runs the garbage collector.</param>
-    public Task UnManage(GameInstallation installation, bool runGc = true, bool cleanGameFolder = true);
+    public Task UnManage(GameInstallation installation, bool runGc = false, bool cleanGameFolder = false);
     
     /// <summary>
     /// Get the diff tree of the unapplied changes of a loadout.

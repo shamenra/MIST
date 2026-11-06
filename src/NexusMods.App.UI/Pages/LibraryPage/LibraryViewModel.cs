@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -54,6 +55,155 @@ public class LibraryViewModel : APageViewModel<ILibraryViewModel>, ILibraryViewM
     private readonly ILibraryService _libraryService;
 
     public string EmptyLibrarySubtitleText { get; }
+
+    // MIST-006-14B2B6: observations remain unowned even while shown by the native Library adapter.
+    [Reactive] public IReadOnlyList<MISTDiscoveredMod> MISTDiscoveredMods { get; private set; } = Array.Empty<MISTDiscoveredMod>();
+    [Reactive] public bool MISTHasDiscoveredMods { get; private set; }
+    [Reactive] public string MISTDiscoverySummary { get; private set; } = "No discovery results yet";
+
+    // MIST-006-14B2B5.2: observed byte total, including possible settings/logs.
+    // Display-only; never used for matching or mod ownership decisions.
+    private static string FormatMISTObservedSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        var magnitude = (double)bytes;
+        var units = new[] { "B", "KiB", "MiB", "GiB", "TiB" };
+        var unit = 0;
+        while (magnitude >= 1024 && unit < units.Length - 1)
+        {
+            magnitude /= 1024;
+            unit++;
+        }
+        return $"{magnitude:0.#} {units[unit]}";
+    }
+
+    private void SetMISTDiscoveryResults(
+        NexusMods.DataModel.ModDiscovery.MISTModDiscoveryPipeline.Report report,
+        bool cached,
+        string? sourceDiscoveryPath = null)
+    {
+        // Preserve the scanner's grouping. A component relationship is NOT an ownership merge.
+        var candidates = report.Inventory.CandidateGroups.Select(group =>
+        {
+            var versions = report.IdentityHints
+                .Where(h => h.GroupKey == group.Key && h.Kind == "embedded-version")
+                .Select(h => h.Value)
+                .Distinct(StringComparer.Ordinal)
+                .Take(3)
+                .ToArray();
+            var versionText = versions.Length == 0
+                ? "Version unknown"
+                : "Version hint: " + string.Join(", ", versions) + " (unverified)";
+            var evidenceText = group.Confidence == "structural-candidate"
+                ? "Structural candidate · Unmanaged"
+                : "Weak structural candidate · Unmanaged";
+            return new MISTDiscoveredMod(group.Key, group.SuggestedName,
+                $"{group.Files.Count} files", versionText, evidenceText,
+                string.Join("\n", group.Files.Select(file => file.Path)),
+                FormatMISTObservedSize(group.Files.Sum(file => Math.Max(0L, file.SizeBytes))),
+                group.Files.Sum(file => Math.Max(0L, file.SizeBytes)));
+        }).ToArray();
+
+        // MIST-006-14B2B8.4: import only a strictly source-bound, complete,
+        // read-only display proposal. Failed or stale proposal => original 28 groups.
+        var reconciled = sourceDiscoveryPath is null ? null :
+            MISTReconciledDisplay.TryLoad(report, sourceDiscoveryPath);
+        if (reconciled is not null) candidates = reconciled;
+
+        MISTDiscoveredMods = candidates;
+        Adapter.SetMISTDiscoveredMods(candidates); // display-only overlay; no DB/loadout mutations
+        MISTHasDiscoveredMods = candidates.Length > 0;
+        var modRows = candidates.Length - (reconciled is not null &&
+            report.Inventory.UnattributedFiles.Count > 0 ? 1 : 0);
+        var rowDescription = reconciled is null
+            ? $"{candidates.Length} candidate groups"
+            : $"{modRows} proposed mod entries (from {report.Inventory.CandidateGroups.Count} groups)";
+        MISTDiscoverySummary =
+            $"{(cached ? "Saved scan · " : "Fresh scan · ")}" +
+            $"{rowDescription} · {report.Inventory.InstalledFileCount} files · " +
+            $"{report.Inventory.UnattributedFiles.Count} unassociated · 0 adopted by this scan";
+    }
+
+
+    // MIST-006-14B2B5.1: no adoption, synchronization, file writes or database calls.
+    // This review is deliberately not connected to the normal Library Install action.
+    public async System.Threading.Tasks.Task MISTReviewDiscoveredModAsync(MISTDiscoveredMod candidate)
+    {
+        var logger = _serviceProvider.GetRequiredService<ILogger<LibraryViewModel>>();
+        logger.LogInformation("MIST-006-14B2B5.1 REVIEW candidate={Candidate} files={Count} action=read-only",
+            candidate.GroupKey, candidate.FileCountText);
+
+        var body = new StringBuilder();
+        body.AppendLine("This is a detected mod candidate, not a managed Library item.");
+        body.AppendLine("M.I.S.T. has not adopted, moved, installed, removed, or modified these files.");
+        body.AppendLine();
+        body.AppendLine("Candidate: " + candidate.Name);
+        body.AppendLine("Recognition: " + candidate.RecognitionText);
+        body.AppendLine(candidate.VersionText);
+        body.AppendLine("Files: " + candidate.FileCountText);
+        body.AppendLine();
+        body.AppendLine("Game-relative files (first 12):");
+        var filePaths = candidate.FilePathsText.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var path in filePaths.Take(12)) body.AppendLine("  " + path);
+        if (filePaths.Length > 12)
+            body.AppendLine($"  ... and {filePaths.Length - 12} more");
+        body.AppendLine();
+        body.AppendLine("Import into management is not enabled in this milestone.");
+
+        var dialog = DialogFactory.CreateStandardDialog(
+            title: "Review discovered mod — " + candidate.Name,
+            new StandardDialogParameters { Text = body.ToString() },
+            buttonDefinitions: [DialogStandardButtons.Close]);
+        await WindowManager.ShowDialog(dialog, DialogWindowType.Modal);
+    }
+
+    private void RestoreMISTDiscoveryDisplay()
+    {
+        // Only the saved output of our own in-game scanner is read, never a manager DB.
+        // This cache is for DISPLAY ONLY and can be stale; it never grants file authority.
+        if (_loadout.InstallationInstance.Game.GameId.ToString() != "RedEngine.Cyberpunk2077") return;
+        try
+        {
+            var state = Environment.GetEnvironmentVariable("XDG_STATE_HOME");
+            if (string.IsNullOrWhiteSpace(state))
+                state = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "state");
+            var directory = System.IO.Path.Combine(state,
+                "ModIntegrationAndSortingTechnology", "mod-discovery");
+            if (!System.IO.Directory.Exists(directory)) return;
+
+            var gameRoot = System.IO.Path.GetFullPath(
+                _loadout.InstallationInstance.Locations[NexusMods.Sdk.Games.LocationId.Game].Path.ToString());
+
+            foreach (var path in System.IO.Directory.EnumerateFiles(directory, "cyberpunk-*.json")
+                         .OrderByDescending(System.IO.File.GetLastWriteTimeUtc).Take(8))
+            {
+                var info = new System.IO.FileInfo(path);
+                if (info.Length > 3 * 1024 * 1024) continue;
+                var json = System.IO.File.ReadAllText(path);
+                var report = System.Text.Json.JsonSerializer.Deserialize<
+                    NexusMods.DataModel.ModDiscovery.MISTModDiscoveryPipeline.Report>(json,
+                    new System.Text.Json.JsonSerializerOptions(
+                        System.Text.Json.JsonSerializerDefaults.Web));
+                if (report?.Inventory?.GameRoot is null) continue;
+                if (!string.Equals(System.IO.Path.GetFullPath(report.Inventory.GameRoot), gameRoot,
+                        StringComparison.Ordinal)) continue;
+                SetMISTDiscoveryResults(report, cached: true, sourceDiscoveryPath: path);
+                return;
+            }
+        }
+        catch (Exception exception) when (exception is System.IO.IOException or
+                                         UnauthorizedAccessException or
+                                         System.Text.Json.JsonException or
+                                         ArgumentException or
+                                         NotSupportedException)
+        {
+            _serviceProvider.GetRequiredService<ILogger<LibraryViewModel>>()
+                .LogWarning(exception, "MIST-006-14B2B5 saved display unavailable");
+        }
+    }
+
+
 
     public ReactiveCommand<Unit> UpdateAllCommand { get; }
     public ReactiveCommand<Unit> RefreshUpdatesCommand { get; }
@@ -139,6 +289,7 @@ public class LibraryViewModel : APageViewModel<ILibraryViewModel>, ILibraryViewM
         var game = _loadout.InstallationInstance.Game;
 
         EmptyLibrarySubtitleText = string.Format(Language.FileOriginsPageViewModel_EmptyLibrarySubtitleText, game.DisplayName);
+        RestoreMISTDiscoveryDisplay();
 
         DeselectItemsCommand = new ReactiveCommand<Unit>(_ =>
         {
@@ -162,9 +313,11 @@ public class LibraryViewModel : APageViewModel<ILibraryViewModel>, ILibraryViewM
             configureAwait: false
         );
 
+        // Discovered observations can be selected for navigation, but never grant
+        // management commands such as install, delete, or advanced install.
         var hasSelection = Adapter.SelectedModels
-            .ObserveCountChanged()
-            .Select(count => count > 0);
+            .ObserveChanged()
+            .Select(_ => GetSelectedIds().Length > 0);
         
         InstallSelectedItemsCommand = hasSelection.ToReactiveCommand<Unit>(
             executeAsync: (_, cancellationToken) => InstallSelectedItems(useAdvancedInstaller: false, cancellationToken),
@@ -248,6 +401,13 @@ public class LibraryViewModel : APageViewModel<ILibraryViewModel>, ILibraryViewM
         {
             Disposable.Create(this, static vm => vm.StorageProvider = null).AddTo(disposables);
             Adapter.Activate().AddTo(disposables);
+
+            // MIST-006-14B2B6: this action ONLY opens the existing evidence review dialog.
+            Adapter.MISTReviewRequested.SubscribeAwait(
+                onNextAsync: async (candidate, _) => await MISTReviewDiscoveredModAsync(candidate),
+                awaitOperation: AwaitOperation.Sequential,
+                configureAwait: false
+            ).AddTo(disposables);
 
             Adapter.MessageSubject.SubscribeAwait(
                 onNextAsync: async (message, cancellationToken) =>
@@ -817,9 +977,68 @@ After asking design, we're choosing to simply open the mod page for now.
         return ValueTask.CompletedTask;
     }
 
-    // Note(sewer): ValueTask because of R3 constraints with ReactiveCommand API
-    private async ValueTask RefreshUpdates(CancellationToken token) 
+    // MIST-006-14B2B4: same Refresh button; discovery runs read-only before the existing update check.
+    private async ValueTask RefreshUpdates(CancellationToken token)
     {
+        if (_loadout.InstallationInstance.Game.GameId.ToString() == "RedEngine.Cyberpunk2077")
+        {
+            var logger = _serviceProvider.GetRequiredService<ILogger<LibraryViewModel>>();
+            var events = new System.Collections.Generic.List<string>();
+            void Note(string message)
+            {
+                var line = $"{DateTimeOffset.Now:O} [MIST-006-14B2B4] {message}";
+                events.Add(line);
+                logger.LogInformation("{MistDiscovery}", line);
+            }
+            string? logPath = null;
+            try
+            {
+                var gameRoot = System.IO.Path.GetFullPath(_loadout.InstallationInstance.Locations[NexusMods.Sdk.Games.LocationId.Game].Path.ToString());
+                var state = Environment.GetEnvironmentVariable("XDG_STATE_HOME");
+                if (string.IsNullOrWhiteSpace(state))
+                    state = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "state");
+                var output = System.IO.Path.GetFullPath(System.IO.Path.Combine(state, "ModIntegrationAndSortingTechnology", "mod-discovery"));
+                var stamp = DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ") + "-" + Guid.NewGuid().ToString("N");
+                var jsonPath = System.IO.Path.Combine(output, "cyberpunk-" + stamp + ".json");
+                logPath = System.IO.Path.Combine(output, "cyberpunk-" + stamp + ".log");
+                if (!NexusMods.DataModel.ModDiscovery.MISTScopedCyberpunkDiscovery.IsSafeReportPath(jsonPath, gameRoot) ||
+                    !NexusMods.DataModel.ModDiscovery.MISTScopedCyberpunkDiscovery.IsSafeReportPath(logPath, gameRoot))
+                    throw new InvalidOperationException("Discovery report path overlaps game directory.");
+                System.IO.Directory.CreateDirectory(output);
+                Note("START root=" + gameRoot + " mode=read-only");
+                var report = await Task.Run(() => NexusMods.DataModel.ModDiscovery.MISTModDiscoveryPipeline.Scan(gameRoot, token), token);
+                Note($"INVENTORY files={report.Inventory.InstalledFileCount} groups={report.Inventory.CandidateGroups.Count} unassociated={report.Inventory.UnattributedFiles.Count}");
+                foreach (var module in report.Modules) Note($"MODULE {module.Module}: {module.Status}, evidence={module.EvidenceCount}");
+                foreach (var group in report.Inventory.CandidateGroups) Note($"GROUP {group.SuggestedName}: {group.Files.Count} files ({group.Confidence})");
+                foreach (var file in report.Inventory.UnattributedFiles) Note("UNASSOCIATED " + file.Path);
+                foreach (var path in report.Inventory.SkippedPaths) Note("SKIPPED " + path);
+                Note($"HINTS identities={report.IdentityHints.Count} fingerprints={report.ContentFingerprints.Count} relationships={report.PossibleRelationships.Count}");
+                var json = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
+                await System.IO.File.WriteAllTextAsync(jsonPath, json, token);
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    SetMISTDiscoveryResults(report, cached: false, sourceDiscoveryPath: jsonPath));
+                Note("DISPLAY candidates=" + report.Inventory.CandidateGroups.Count + " unmanaged=true");
+                Note("REPORT " + jsonPath);
+                Note("COMPLETE no mod adoption or game changes");
+                _notificationService.ShowToast($"M.I.S.T.: {report.Inventory.CandidateGroups.Count} groups / {report.Inventory.InstalledFileCount} files detected; not imported.", ToastNotificationVariant.Success);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                Note("CANCELLED");
+                throw;
+            }
+            catch (Exception error)
+            {
+                Note("FAILED " + error);
+                logger.LogError(error, "MIST-006-14B2B4 discovery failed");
+                _notificationService.ShowToast("M.I.S.T. discovery failed; check application logs.", ToastNotificationVariant.Failure);
+            }
+            finally
+            {
+                if (logPath != null)
+                    await System.IO.File.WriteAllLinesAsync(logPath, events, CancellationToken.None);
+            }
+        }
         await _modUpdateService.CheckAndUpdateModPages(token, notify: true);
     }
 
@@ -853,7 +1072,9 @@ After asking design, we're choosing to simply open the mod page for now.
     
     private static IEnumerable<LibraryItemId> GetLibraryItemIds(CompositeItemModel<EntityId> itemModel)
     {
-        return itemModel.Get<LibraryComponents.LibraryItemIds>(LibraryColumns.Actions.LibraryItemIdsComponentKey).ItemIds;
+        // Fail closed: an observed, unowned candidate has no LibraryItemIds.
+        var itemIds = itemModel.GetOptional<LibraryComponents.LibraryItemIds>(LibraryColumns.Actions.LibraryItemIdsComponentKey);
+        return itemIds.HasValue ? itemIds.Value.ItemIds : Array.Empty<LibraryItemId>();
     }
 
     private IEnumerable<CompositeItemModel<EntityId>> GetSelectedModelsWithUpdates()
@@ -1073,6 +1294,73 @@ public class LibraryTreeDataGridAdapter :
     private readonly LibraryFilter _libraryFilter;
     private readonly IConnection _connection;
 
+    // MIST-006-14B2B6: ephemeral UI-only rows. These are not registered ILibraryDataProviders
+    // and never create or link real LibraryItem/Loadout records.
+    private readonly SourceCache<CompositeItemModel<EntityId>, EntityId> _mistDiscoveredRows =
+        new(static model => model.Key);
+    public Subject<MISTDiscoveredMod> MISTReviewRequested { get; } = new();
+
+    // These keys exist only in memory and are never passed to any DB operation.
+    // Deliberately high-valued ephemeral namespace. Never dereference these IDs.
+    private static EntityId MISTDisplayKey(int group, int file)
+    {
+        if (group < 1 || group >= 0x10000 || file < 0 || file >= 0x1000000)
+            throw new ArgumentOutOfRangeException(nameof(group));
+        var raw = 0xFFFE000000000000UL | ((ulong)group << 24) | (uint)file;
+        return System.Runtime.CompilerServices.Unsafe.BitCast<ulong, EntityId>(raw);
+    }
+
+    private static CompositeItemModel<EntityId> MakeMISTDiscoveredRow(MISTDiscoveredMod candidate, int index)
+    {
+        var filePaths = candidate.FilePathsText.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var children = NexusMods.App.UI.Extensions.ObservableExtensions.ReturnFactory(() =>
+        {
+            var changes = new List<Change<CompositeItemModel<EntityId>, EntityId>>();
+            for (var i = 0; i < filePaths.Length; i++)
+            {
+                // Child is an observed file path, NOT a downloaded Nexus variant.
+                var child = new CompositeItemModel<EntityId>(MISTDisplayKey(index, i + 1));
+                child.Add(SharedColumns.Name.NameComponentKey, new NameComponent(value: filePaths[i]));
+                child.Add(LibraryColumns.Actions.MISTReviewComponentKey,
+                    new LibraryComponents.MISTReviewAction(candidate, isFile: true));
+                changes.Add(new Change<CompositeItemModel<EntityId>, EntityId>(
+                    ChangeReason.Add, child.Key, child));
+            }
+            return new ChangeSet<CompositeItemModel<EntityId>, EntityId>(changes);
+        });
+
+        var root = new CompositeItemModel<EntityId>(MISTDisplayKey(index, 0))
+        {
+            HasChildrenObservable = System.Reactive.Linq.Observable.Return(filePaths.Length > 0),
+            ChildrenObservable = children,
+        };
+        root.Add(SharedColumns.Name.NameComponentKey,
+            new NameComponent(value: candidate.Name + "  ·  Unmanaged"));
+        root.Add(SharedColumns.Name.ImageComponentKey,
+            new ImageComponent(value: ImagePipelines.ModPageThumbnailFallback));
+        root.Add(LibraryColumns.ItemVersion.CurrentVersionComponentKey,
+            new VersionComponent(value: candidate.VersionText == "Version unknown" ? "Unknown" : "Unverified"));
+        root.Add(SharedColumns.ItemSize.ComponentKey,
+            new SizeComponent(value: NexusMods.Paths.Size.FromLong(candidate.TotalSizeBytes)));
+        root.Add(LibraryColumns.Actions.MISTReviewComponentKey,
+            new LibraryComponents.MISTReviewAction(candidate, isFile: false));
+        return root;
+    }
+
+    public void SetMISTDiscoveredMods(IReadOnlyList<MISTDiscoveredMod> candidates)
+    {
+        // Bound the UI adapter to observed candidate groups, not individual game files.
+        // The scanner is responsible for producing the candidate list. No FS writes here.
+        if (candidates.Count >= 0x10000)
+            throw new InvalidOperationException("Too many display-only candidate groups");
+        var models = candidates.Select((candidate, index) => MakeMISTDiscoveredRow(candidate, index + 1)).ToArray();
+        _mistDiscoveredRows.Edit(updater =>
+        {
+            updater.Clear();
+            updater.AddOrUpdate(models);
+        });
+    }
+
     public Subject<OneOf<InstallMessage, UpdateAndReplaceMessage, UpdateAndKeepOldMessage, ViewChangelogMessage, ViewModPageMessage, HideUpdatesMessage, DeleteItemMessage>> MessageSubject { get; } = new();
 
     public LibraryTreeDataGridAdapter(IServiceProvider serviceProvider, LibraryFilter libraryFilter) : base(serviceProvider)
@@ -1084,12 +1372,26 @@ public class LibraryTreeDataGridAdapter :
 
     protected override IObservable<IChangeSet<CompositeItemModel<EntityId>, EntityId>> GetRootsObservable(bool viewHierarchical)
     {
-        return _libraryDataProviders.Select(x => x.ObserveLibraryItems(_libraryFilter)).MergeChangeSets();
+        // Merge display-only discovery models into the exact same native roots/grid.
+        return _libraryDataProviders.Select(x => x.ObserveLibraryItems(_libraryFilter))
+            .Append(_mistDiscoveredRows.Connect())
+            .MergeChangeSets();
     }
 
     protected override void BeforeModelActivationHook(CompositeItemModel<EntityId> model)
     {
         base.BeforeModelActivationHook(model);
+
+        model.SubscribeToComponentAndTrack<LibraryComponents.MISTReviewAction, LibraryTreeDataGridAdapter>(
+            key: LibraryColumns.Actions.MISTReviewComponentKey,
+            state: this,
+            factory: static (self, itemModel, component) => component.CommandReview.Subscribe(
+                (self, component), static (_, state) =>
+                {
+                    var (adapter, review) = state;
+                    adapter.MISTReviewRequested.OnNext(review.Candidate);
+                })
+        );
 
         model.SubscribeToComponentAndTrack<LibraryComponents.InstallAction, LibraryTreeDataGridAdapter>(
             key: LibraryColumns.Actions.InstallComponentKey,
@@ -1194,7 +1496,8 @@ public class LibraryTreeDataGridAdapter :
     
     private static IEnumerable<LibraryItemId> GetLibraryItemIds(CompositeItemModel<EntityId> itemModel)
     {
-        return itemModel.Get<LibraryComponents.LibraryItemIds>(LibraryColumns.Actions.LibraryItemIdsComponentKey).ItemIds;
+        var itemIds = itemModel.GetOptional<LibraryComponents.LibraryItemIds>(LibraryColumns.Actions.LibraryItemIdsComponentKey);
+        return itemIds.HasValue ? itemIds.Value.ItemIds : Array.Empty<LibraryItemId>();
     }
 
     protected override IColumn<CompositeItemModel<EntityId>>[] CreateColumns(bool viewHierarchical)
@@ -1219,6 +1522,8 @@ public class LibraryTreeDataGridAdapter :
         if (disposing && !_isDisposed)
         {
             MessageSubject.Dispose();
+            MISTReviewRequested.Dispose();
+            _mistDiscoveredRows.Dispose();
             _isDisposed = true;
         }
 

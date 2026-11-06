@@ -262,7 +262,35 @@
             <x:Type TypeName="controls:CompositeItemModel" x:TypeArguments="abstractions:EntityId" />
         </DataTemplate.DataType>
 
-        <StackPanel Orientation="Horizontal">
+        <!-- MIST-006-14B2B6: unmanaged row uses review-only action;
+             managed rows render the original Actions panel unchanged as fallback. -->
+        <controls:ComponentControl x:TypeArguments="abstractions:EntityId" Content="{CompiledBinding}">
+            <controls:ComponentControl.ComponentTemplate>
+                <controls:ComponentTemplate x:TypeArguments="local:LibraryComponents+MISTReviewAction"
+                                            ComponentKey="{x:Static local:LibraryColumns+Actions.MISTReviewComponentKey}">
+                    <controls:ComponentTemplate.DataTemplate>
+                        <DataTemplate DataType="{x:Type local:LibraryComponents+MISTReviewAction}">
+                            <StackPanel Orientation="Horizontal">
+                                <controls:StandardButton Command="{CompiledBinding CommandReview}"
+                                                         Text="{CompiledBinding ButtonText}"
+                                                         Size="Small" Type="Primary" Fill="WeakAlt"
+                                                         ToolTip.Tip="Read-only review of detected files. No install or delete." />
+                                <controls:StandardButton LeftIcon="{x:Static icons:IconValues.MoreVertical}"
+                                                         ShowIcon="Left" ShowLabel="False" Fill="None">
+                                    <controls:StandardButton.Flyout>
+                                        <MenuFlyout>
+                                            <MenuItem Header="Review detected files"
+                                                      Command="{CompiledBinding CommandReview}" />
+                                        </MenuFlyout>
+                                    </controls:StandardButton.Flyout>
+                                </controls:StandardButton>
+                            </StackPanel>
+                        </DataTemplate>
+                    </controls:ComponentTemplate.DataTemplate>
+                </controls:ComponentTemplate>
+            </controls:ComponentControl.ComponentTemplate>
+            <controls:ComponentControl.Fallback>
+                <StackPanel Orientation="Horizontal">
 
             <!-- Update -->
             <controls:ComponentControl x:TypeArguments="abstractions:EntityId" Content="{CompiledBinding}">
@@ -328,6 +356,8 @@
 
 
         </StackPanel>
+            </controls:ComponentControl.Fallback>
+        </controls:ComponentControl>
     </DataTemplate>
 
 </ResourceDictionary>

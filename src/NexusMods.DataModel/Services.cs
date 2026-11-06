@@ -114,7 +114,8 @@ public static class Services
         // Verbs
         coll.AddLoadoutManagementVerbs()
             .AddImportExportVerbs()
-            .AddToolVerbs();
+            .AddToolVerbs()
+            .AddMISTExistingModRecognitionVerbs();
 
         return coll;
     }

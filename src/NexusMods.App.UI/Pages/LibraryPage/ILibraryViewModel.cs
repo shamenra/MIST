@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Avalonia.Platform.Storage;
 using NexusMods.Abstractions.Loadouts;
@@ -18,6 +19,13 @@ public interface ILibraryViewModel : IPageViewModelInterface
     InstallationTarget? SelectedInstallationTarget { get; set; }
 
     string EmptyLibrarySubtitleText { get; }
+
+    // Display-only discovery observations, not managed Library records.
+    IReadOnlyList<MISTDiscoveredMod> MISTDiscoveredMods { get; }
+    bool MISTHasDiscoveredMods { get; }
+    string MISTDiscoverySummary { get; }
+    // Read-only review. Never adopts or writes game files.
+    System.Threading.Tasks.Task MISTReviewDiscoveredModAsync(MISTDiscoveredMod candidate);
 
     public ReactiveCommand<Unit> UpdateAllCommand { get; }
     public ReactiveCommand<Unit> RefreshUpdatesCommand { get; }

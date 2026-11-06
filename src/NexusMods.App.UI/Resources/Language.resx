@@ -437,7 +437,7 @@
         <value>View</value>
     </data>
     <data name="GameWidget__RemoveGame_ToolTip" xml:space="preserve">
-        <value>Removes the game and all mods installed by the app</value>
+        <value>Stop M.I.S.T. management without removing installed game files</value>
     </data>
     <data name="GameWidget__Removing_game" xml:space="preserve">
         <value>Removing...</value>
@@ -883,7 +883,7 @@ To apply changes or launch the game again, please close the game first.</value>
         <value>Removing {0}</value>
     </data>
     <data name="RemoveGameOverlayView_Description" xml:space="preserve">
-        <value>Removing will uninstall all mods and collections for {0}, but your downloaded mods will remain. If you re-add the game, those mods will still be available in your Library.</value>
+        <value>Stop managing {0} in M.I.S.T. Your installed game files and mods will remain in place. M.I.S.T. loadout records for this game will be removed; downloaded mod files remain unless you choose the separate deletion option.</value>
     </data>
     <data name="RemoveGameOverlayView_ToggleDescription" xml:space="preserve">
         <value>Also delete {0} downloaded mods and {1} collections for {2}.</value>
@@ -892,10 +892,10 @@ To apply changes or launch the game again, please close the game first.</value>
         <value>Cancel</value>
     </data>
     <data name="RemoveGameOverlayView_RemoveButton" xml:space="preserve">
-        <value>Remove game and mods</value>
+        <value>Stop managing game</value>
     </data>
     <data name="RemoveGameOverlayView_RemoveButton_AlsoDelete" xml:space="preserve">
-        <value>Remove game and delete mods</value>
+        <value>Stop managing and delete downloads</value>
     </data>
 
     <data name="ManualDownloadRequiredOverlayView_InfoTitle" xml:space="preserve">

@@ -323,13 +323,13 @@ internal partial class LoadoutManager : ILoadoutManager
         return LoadoutId.From(lastAppliedLoadout);
     }
 
-    public IJobTask<UnmanageGameJob, GameInstallation> UnManage(GameInstallation installation, bool runGc = true, bool cleanGameFolder = true, CancellationToken cancellationToken = default)
+    public IJobTask<UnmanageGameJob, GameInstallation> UnManage(GameInstallation installation, bool runGc = false, bool cleanGameFolder = false, CancellationToken cancellationToken = default)
     {
+        // Hard stop: this operation must NEVER restore or remove game-directory files.
+        if (cleanGameFolder) throw new InvalidOperationException("M.I.S.T. forbids game-folder cleanup during unmanage.");
         return _jobMonitor.Begin(new UnmanageGameJob(installation), async ctx =>
         {
             var metadata = _gameRegistry.ForceGetMetadata(installation);
-
-            if (GetCurrentlyActiveLoadout(installation).HasValue && cleanGameFolder) await DeactivateCurrentLoadout(installation, cancellationToken: cancellationToken);
             await ctx.YieldAsync();
 
             {
@@ -349,7 +349,7 @@ internal partial class LoadoutManager : ILoadoutManager
             {
                 _logger.LogInformation("Deleting loadout {Loadout} - {ShortName}", loadout.Name, loadout.ShortName);
                 await ctx.YieldAsync();
-                await DeleteLoadout(loadout, gcRunMode: GarbageCollectorRunMode.DoNotRun, deactivateIfActive: cleanGameFolder, cancellationToken: cancellationToken);
+                await DeleteLoadout(loadout, gcRunMode: GarbageCollectorRunMode.DoNotRun, deactivateIfActive: false, cancellationToken: cancellationToken);
             }
 
             // Retract all `GameBakedUpFile` entries to allow for game file backups to be cleaned up from the FileStore

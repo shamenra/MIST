@@ -100,6 +100,7 @@
         <ProjectReference Include="..\NexusMods.Abstractions.GuidedInstallers\NexusMods.Abstractions.GuidedInstallers.csproj" />
         <ProjectReference Include="..\NexusMods.Abstractions.Telemetry\NexusMods.Abstractions.Telemetry.csproj" />
         <ProjectReference Include="..\NexusMods.Networking.NexusWebApi\NexusMods.Networking.NexusWebApi.csproj" />
+        <ProjectReference Include="..\NexusMods.DataModel\NexusMods.DataModel.csproj" />
         <ProjectReference Include="..\NexusMods.App.Cli\NexusMods.App.Cli.csproj" />
         <ProjectReference Include="..\NexusMods.Collections\NexusMods.Collections.csproj" />
         <ProjectReference Include="..\NexusMods.Networking.GitHub\NexusMods.Networking.GitHub.csproj" />

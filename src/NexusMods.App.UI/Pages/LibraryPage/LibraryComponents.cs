@@ -143,6 +143,7 @@ public static class LibraryColumns
         
         public static readonly ComponentKey LibraryItemIdsComponentKey = ComponentKey.From(ColumnTemplateResourceKey + "_" + nameof(LibraryComponents.LibraryItemIds));
         public static readonly ComponentKey InstallComponentKey = ComponentKey.From(ColumnTemplateResourceKey + "_" + nameof(Actions) + "_" + "Install");
+        public static readonly ComponentKey MISTReviewComponentKey = ComponentKey.From(ColumnTemplateResourceKey + "_MIST_DiscoveredReview");
         public static readonly ComponentKey UpdateComponentKey = ComponentKey.From(ColumnTemplateResourceKey + "_" + nameof(Actions) + "_" + "Update");
         public static readonly ComponentKey ViewChangelogComponentKey = ComponentKey.From(ColumnTemplateResourceKey + "_" + nameof(Actions) + "_" + "ViewChangelog");
         public static readonly ComponentKey ViewModPageComponentKey = ComponentKey.From(ColumnTemplateResourceKey + "_" + nameof(Actions) + "_" + "ViewModPage");
@@ -155,6 +156,25 @@ public static class LibraryColumns
 
 public static class LibraryComponents
 {
+    // Display-only action. It cannot produce InstallMessage, DeleteItemMessage, or LibraryItemIds.
+    public sealed class MISTReviewAction : ReactiveR3Object, IItemModelComponent<MISTReviewAction>, IComparable<MISTReviewAction>
+    {
+        public MISTDiscoveredMod Candidate { get; }
+        public string ButtonText { get; }
+        public ReactiveCommand<Unit> CommandReview { get; } = new();
+        public MISTReviewAction(MISTDiscoveredMod candidate, bool isFile)
+        {
+            Candidate = candidate;
+            ButtonText = isFile ? "Review" : "Manage";
+        }
+        public int CompareTo(MISTReviewAction? other) => 0;
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) CommandReview.Dispose();
+            base.Dispose(disposing);
+        }
+    }
+
     
     public sealed class LibraryItemIds : ReactiveR3Object, IItemModelComponent<LibraryItemIds>, IComparable<LibraryItemIds>
     {

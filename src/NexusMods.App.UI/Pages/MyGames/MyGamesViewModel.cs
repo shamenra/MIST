@@ -234,7 +234,7 @@ public class MyGamesViewModel : APageViewModel<IMyGamesViewModel>, IMyGamesViewM
 
     private async Task RemoveGame(GameInstallation installation, bool shouldDeleteDownloads, LibraryFile.ReadOnly[] filesToDelete, CollectionMetadata.ReadOnly[] collections)
     {
-        await _syncService.UnManage(installation);
+        await _syncService.UnManage(installation, runGc: false, cleanGameFolder: false);
 
         if (!shouldDeleteDownloads) return;
         await _libraryService.RemoveLibraryItems(filesToDelete.Select(file => file.AsLibraryItem()));
@@ -259,10 +259,9 @@ public class MyGamesViewModel : APageViewModel<IMyGamesViewModel>, IMyGamesViewM
         // Offer to clean them up
         if (changeEntries.Length > 0)
         {
-            var (revert, doNothing, clean) = (ButtonDefinitionId.Cancel, ButtonDefinitionId.From("doNothing"), ButtonDefinitionId.Accept);
-            var result = await ShowCleanGameFolderDialog(revert,
+            var (revert, doNothing) = (ButtonDefinitionId.Cancel, ButtonDefinitionId.From("doNothing"));
+            var result = await ShowExistingFilesDialog(revert,
                 doNothing,
-                clean,
                 changeEntries,
                 installation
             );
@@ -277,16 +276,7 @@ public class MyGamesViewModel : APageViewModel<IMyGamesViewModel>, IMyGamesViewM
                 Tracking.AddEvent(Events.Game.RevertManageOnDirty, new EventMetadata(name: $"{installation.Game.DisplayName} - {installation.LocatorResult.Store}"));
                 return;
             }
-            if (result == clean)
-            {
-                vm.State = GameWidgetState.AddingGame;
-                await CleanGameFolder(installation, loadout);
-                vm.State = GameWidgetState.ManagedGame;
-                
-                Tracking.AddEvent(Events.Game.CleanGameOnManage, new EventMetadata(name: $"{installation.Game.DisplayName} - {installation.LocatorResult.Store}"));
-            }
-            
-            // do nothing, so keep the files
+            // Existing game files are preserved. Recognition will be a separate step.
             Tracking.AddEvent(Events.Game.KeepDirtyOnManage, new EventMetadata(name: $"{installation.Game.DisplayName} - {installation.LocatorResult.Store}"));
         }
         
@@ -303,25 +293,22 @@ public class MyGamesViewModel : APageViewModel<IMyGamesViewModel>, IMyGamesViewM
         return ValueTask.FromResult(overrideGroup.AsLoadoutItemGroup().Children.OfTypeLoadoutItemWithTargetPath().ToArray());
     }
     
-    private async Task<ButtonDefinitionId> ShowCleanGameFolderDialog(
+    private async Task<ButtonDefinitionId> ShowExistingFilesDialog(
         ButtonDefinitionId revert,
         ButtonDefinitionId doNothing,
-        ButtonDefinitionId clean,
         LoadoutItemWithTargetPath.ReadOnly[] changeEntries,
         GameInstallation installation)
     {
         var markdownVm = _serviceProvider.GetRequiredService<IMarkdownRendererViewModel>();
         markdownVm.Contents = $"""
-            We found {changeEntries.Length} files in the game folder that aren’t part of a clean install. To avoid conflicts with mods, **we recommend starting with a clean folder**.
-            #### Important
-            If you keep existing files (not recommended):
-            - The existing files will be placed in **External Changes**.
-            - Files in External Changes **override any mods you install later**.
-            - If you stop managing this game or uninstall the app, those **files will be permanently removed**.
+            M.I.S.T. found {changeEntries.Length} files that aren't part of the recognized base game.
+            **You do not need to clean your game folder.** These files will remain in place and are currently tracked as **External Changes**.
+            Future mod recognition will identify known mods and flag genuine file conflicts for review.
+            Stopping M.I.S.T. management preserves your installed game files.
             """;
         
         var dialog = DialogFactory.CreateStandardDialog(
-            title: $"Your {installation.Game.DisplayName} folder isn't a clean install",
+            title: $"Existing files detected in {installation.Game.DisplayName}",
             new StandardDialogParameters()
             {
                 Markdown = markdownVm,
@@ -329,35 +316,13 @@ public class MyGamesViewModel : APageViewModel<IMyGamesViewModel>, IMyGamesViewM
             buttonDefinitions:
             [
                 new DialogButtonDefinition("Cancel", revert),
-                new DialogButtonDefinition("Keep existing files", doNothing, ButtonAction.Reject),
-                new DialogButtonDefinition("Clean folder", clean, ButtonAction.Accept, ButtonStyling.Primary),
+                new DialogButtonDefinition("Continue — preserve files", doNothing, ButtonAction.Accept, ButtonStyling.Primary),
             ]
         );
         
         return (await _windowManager.ShowDialog(dialog, DialogWindowType.Modal)).ButtonId;
     }
     
-    private async Task CleanGameFolder(GameInstallation installation, Loadout.ReadOnly loadout)
-    {
-        var db = _connection.Db;
-        var tx = _connection.BeginTransaction();
-        var changeEntries = await GetExternalChangesItems(loadout.Rebase()); 
-        
-        // Remove items from External Changes mod
-        foreach (var entry in changeEntries)
-        {
-            tx.Delete(entry.Id, recursive: false);
-        }
-        await tx.Commit();
-
-        loadout = loadout.Rebase();
-        var game = installation.GetGame();
-        var syncer = game.Synchronizer;
-        
-        // Apply clean state to game folder
-        await syncer.Synchronize(Loadout.Load(db, loadout));
-    }
-
     private async Task<Loadout.ReadOnly> ManageGame(GameInstallation installation)
     {
         return await _loadoutManager.CreateLoadout(installation);

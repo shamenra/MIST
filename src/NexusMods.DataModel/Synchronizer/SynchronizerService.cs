@@ -1,4 +1,4 @@
-﻿using System.Reactive.Linq;
+using System.Reactive.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NexusMods.Abstractions.Games;
@@ -118,13 +118,15 @@ public class SynchronizerService : ISynchronizerService
     }
 
     /// <inheritdoc />
-    public async Task UnManage(GameInstallation installation, bool runGc = true, bool cleanGameFolder = true)
+    public async Task UnManage(GameInstallation installation, bool runGc = false, bool cleanGameFolder = false)
     {
+        // MIST-006-14A1: no unmanage call may reset or clean a game directory.
+        if (cleanGameFolder) throw new InvalidOperationException("M.I.S.T. forbids game-folder cleanup during unmanage.");
         await _semaphore.WaitAsync();
         try
         {
             if (!_gameRegistry.TryGetMetadata(installation, out var metadata)) return;
-            await _loadoutManager.Value.UnManage(installation, runGc, cleanGameFolder);
+            await _loadoutManager.Value.UnManage(installation, runGc, cleanGameFolder: false);
         }
         finally
         {
