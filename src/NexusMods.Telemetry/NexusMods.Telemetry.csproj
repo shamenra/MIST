@@ -8,6 +8,8 @@
     </ItemGroup>
 
     <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.Hosting" VersionOverride="11.0.0" />
+        <PackageReference Include="Microsoft.Extensions.ObjectPool" VersionOverride="11.0.0" />
         <PackageReference Include="OpenTelemetry" />
         <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
         <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
